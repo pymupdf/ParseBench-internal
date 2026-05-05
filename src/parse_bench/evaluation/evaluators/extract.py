@@ -19,7 +19,6 @@ from parse_bench.evaluation.metrics.field_grounding.extract_adapter import (
 )
 from parse_bench.evaluation.metrics.field_grounding.rule_filters import (
     filter_extract_field_rules,
-    verified_only_metadata,
 )
 from parse_bench.evaluation.metrics.field_grounding.value_compare import (
     compare_attributed_value,
@@ -56,7 +55,6 @@ class ExtractEvaluator(BaseEvaluator):
         normalize_dates: bool = True,
         weighted: bool = True,
         enable_rule_based: bool = True,
-        verified_only_extract_field_rules: bool = False,
     ):
         """
         Initialize the extract evaluator.
@@ -74,7 +72,6 @@ class ExtractEvaluator(BaseEvaluator):
         )
         self._enable_rule_based = enable_rule_based
         self._rule_metric = ExtractRuleBasedMetric()
-        self._verified_only_extract_field_rules = verified_only_extract_field_rules
 
     def can_evaluate(self, inference_result: InferenceResult, test_case: TestCase) -> bool:
         """
@@ -130,15 +127,7 @@ class ExtractEvaluator(BaseEvaluator):
         field_rules_for_unwrap = (
             test_case.get_extract_field_rules() if hasattr(test_case, "get_extract_field_rules") else []
         )
-        scoring_field_rules = filter_extract_field_rules(
-            field_rules_for_unwrap,
-            verified_only=self._verified_only_extract_field_rules,
-        )
-        rule_filter_metadata = verified_only_metadata(
-            enabled=self._verified_only_extract_field_rules,
-            input_rule_count=len(field_rules_for_unwrap),
-            scored_rule_count=len(scoring_field_rules),
-        )
+        scoring_field_rules = filter_extract_field_rules(field_rules_for_unwrap)
         normalization = normalize_list_prediction(
             raw_extracted_data,
             field_rules_for_unwrap,
@@ -186,7 +175,6 @@ class ExtractEvaluator(BaseEvaluator):
             metrics,
             field_rules=scoring_field_rules,
             skip_field_paths=unwrap_skipped,
-            filter_metadata=rule_filter_metadata,
         )
         grounding_metrics = compute_extract_field_grounding_metrics(
             extracted_data=extracted_data,
@@ -200,9 +188,6 @@ class ExtractEvaluator(BaseEvaluator):
             normalized_top_level_keys=normalization.normalized_top_level_keys,
             list_unwrap_warnings=normalization.warnings,
         )
-        if rule_filter_metadata:
-            for metric in grounding_metrics:
-                metric.metadata.update(rule_filter_metadata)
         metrics.extend(grounding_metrics)
 
         # Rule-based evaluation
@@ -283,7 +268,6 @@ class ExtractEvaluator(BaseEvaluator):
         *,
         field_rules: list[Any],
         skip_field_paths: Iterable[str] = (),
-        filter_metadata: dict[str, object] | None = None,
     ) -> None:
         """Emit per-rule and doc-level metrics for `extract_field` rules.
 
@@ -295,7 +279,6 @@ class ExtractEvaluator(BaseEvaluator):
         """
         if not field_rules:
             return
-        filter_metadata = filter_metadata or {}
 
         skip_set = set(skip_field_paths)
         eligible_rules = [rule for rule in field_rules if rule.field_path not in skip_set]
@@ -321,7 +304,6 @@ class ExtractEvaluator(BaseEvaluator):
                     metadata={
                         "verified": rule.verified,
                         "field_path": rule.field_path,
-                        **filter_metadata,
                     },
                 )
             )
@@ -333,7 +315,7 @@ class ExtractEvaluator(BaseEvaluator):
                 MetricValue(
                     metric_name="extract_value_pass_rate",
                     value=passed / total,
-                    metadata={"total": total, "passed": passed, **filter_metadata},
+                    metadata={"total": total, "passed": passed},
                 )
             )
 

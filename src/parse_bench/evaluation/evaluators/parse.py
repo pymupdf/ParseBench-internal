@@ -10,7 +10,6 @@ from parse_bench.evaluation.metrics.field_grounding.parse_adapter import (
 )
 from parse_bench.evaluation.metrics.field_grounding.rule_filters import (
     filter_extract_field_rules,
-    verified_only_metadata,
 )
 from parse_bench.evaluation.metrics.parse.grits_metric import (
     GriTSMetric,
@@ -128,7 +127,6 @@ class ParseEvaluator(BaseEvaluator):
         enable_table_record_match: bool = True,
         enable_table_composite: bool = False,
         teds_variants: set[str] | None = None,
-        verified_only_extract_field_rules: bool = False,
     ):
         """
         Initialize the ParseEvaluator.
@@ -161,7 +159,6 @@ class ParseEvaluator(BaseEvaluator):
         self._header_accuracy_generous_metric = HeaderAccuracyMetricGenerous()
         self._structural_consistency_metric = StructuralConsistencyMetric()
         self._table_record_match_metric = TableRecordMatchMetric()
-        self._verified_only_extract_field_rules = verified_only_extract_field_rules
         # Reference implementation for comparison — remove before deploying.
         # Set to None to disable, or swap GriTSMetric() above with
         # ReferenceGriTSMetric() to use the reference as the primary.
@@ -750,7 +747,6 @@ class ParseEvaluator(BaseEvaluator):
         all_extract_field_rules = test_case.get_extract_field_rules()
         extract_field_rules = filter_extract_field_rules(
             all_extract_field_rules,
-            verified_only=self._verified_only_extract_field_rules,
             require_bboxes=True,
         )
         metrics = compute_parse_field_grounding_metrics(
@@ -758,14 +754,6 @@ class ParseEvaluator(BaseEvaluator):
             field_rules=extract_field_rules,
             data_schema=test_case.data_schema,
         )
-        rule_filter_metadata = verified_only_metadata(
-            enabled=self._verified_only_extract_field_rules,
-            input_rule_count=len(all_extract_field_rules),
-            scored_rule_count=len(extract_field_rules),
-        )
-        if rule_filter_metadata:
-            for metric in metrics:
-                metric.metadata.update(rule_filter_metadata)
         stats = build_operational_stats(inference_result)
         return EvaluationResult(
             test_id=test_case.test_id,

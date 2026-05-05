@@ -46,6 +46,7 @@ class EvaluationCLI:
         enable_teds: bool = False,
         skip_rules: bool = False,
         ontology: str = "basic",
+        verified_only: bool = False,
     ) -> int:
         """
         Run evaluation on inference results.
@@ -69,6 +70,8 @@ class EvaluationCLI:
             skip_rules: Skip rule-based metric computation in parse evaluation (default: False)
             ontology: Default ontology for layout evaluation when test case omits ontology
                 (e.g. "basic", "canonical")
+            verified_only: Discard test_rules explicitly marked verified=false before
+                evaluation (default: False)
 
         Returns:
             Exit code (0 for success, non-zero for failure)
@@ -139,6 +142,7 @@ class EvaluationCLI:
                 enable_teds=enable_teds,
                 skip_rules=skip_rules,
                 layout_ontology=ontology,
+                verified_only=verified_only,
             )
 
             print(f"Running evaluation on: {output_dir_path}")
@@ -150,6 +154,8 @@ class EvaluationCLI:
                 print(f"Filtering by pipeline: {pipeline_name}")
             if group:
                 print(f"Filtering by group: {group}")
+            if verified_only:
+                print("Filtering test rules to verified rules only")
             if product_type == "layout_detection" or product_type is None:
                 print(f"Default layout ontology: {ontology}")
 
