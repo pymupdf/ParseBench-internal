@@ -11,14 +11,14 @@ Reference: layout_detection_class_label_canonicalization_proposal.md
 """
 
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import StrEnum
 
 # =============================================================================
 # Canonical17 Label Enum (Standardized Dataset Labels)
 # =============================================================================
 
 
-class CanonicalLabel(str, Enum):
+class CanonicalLabel(StrEnum):
     """Canonical17 layout detection labels.
 
     This is the standardized label set based on Docling Heron's 17-class schema.
@@ -103,7 +103,7 @@ CANONICAL_TO_CORE: dict[CanonicalLabel, CanonicalLabel | None] = {
 # =============================================================================
 
 
-class BasicLabel(str, Enum):
+class BasicLabel(StrEnum):
     """Basic7 layout detection labels (simplified ontology).
 
     Merges Title + Section-header → Section
@@ -290,7 +290,7 @@ class CanonicalLayoutDetectionOntology(LayoutDetectionOntology):
 # =============================================================================
 
 
-class OntologyType(str, Enum):
+class OntologyType(StrEnum):
     """Supported ontology types."""
 
     CORE = "core"

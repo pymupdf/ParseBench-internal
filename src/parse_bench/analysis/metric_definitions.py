@@ -36,8 +36,7 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "teds_struct": MetricInfo(
         "TEDS-Struct (All)",
-        "TEDS structure-only variant. Compares table HTML tree structure while ignoring "
-        "cell text content entirely.",
+        "TEDS structure-only variant. Compares table HTML tree structure while ignoring cell text content entirely.",
     ),
     "teds_struct_predicted": MetricInfo(
         "TEDS-Struct (Predicted)",
@@ -128,8 +127,7 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "header_cell_count": MetricInfo(
         "Header Cell Count",
-        "Ratio of predicted header cells to expected. Penalizes both missing and extra "
-        "header cells symmetrically.",
+        "Ratio of predicted header cells to expected. Penalizes both missing and extra header cells symmetrically.",
     ),
     "header_grits": MetricInfo(
         "Header GriTS",
@@ -137,13 +135,11 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "header_content_bag": MetricInfo(
         "Header Content Bag",
-        "Bag-of-cells exact content overlap: measures how many header cell texts match "
-        "regardless of position.",
+        "Bag-of-cells exact content overlap: measures how many header cell texts match regardless of position.",
     ),
     "header_perfect": MetricInfo(
         "Header Perfect",
-        "Binary metric: 1.0 if the header structure matches the ground truth exactly, "
-        "0.0 otherwise.",
+        "Binary metric: 1.0 if the header structure matches the ground truth exactly, 0.0 otherwise.",
     ),
     "header_structure": MetricInfo(
         "Header Structure",
@@ -167,8 +163,7 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "header_block_relative_position": MetricInfo(
         "Header Block Relative Position",
-        "Product of proximity (nearest-edge distance) and direction (cosine similarity) "
-        "between matched header blocks.",
+        "Product of proximity (nearest-edge distance) and direction (cosine similarity) between matched header blocks.",
     ),
     # ── Parse: structural consistency ──
     "structural_consistency": MetricInfo(
@@ -252,8 +247,7 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     # ── Parse: rule-based ──
     "rule_pass_rate": MetricInfo(
         "Rule Pass Rate",
-        "Fraction of test rules that pass for each example: passed / total across all "
-        "rule types.",
+        "Fraction of test rules that pass for each example: passed / total across all rule types.",
     ),
     # ── Parse: rule subtypes ──
     "chart_data_point": MetricInfo(
@@ -262,8 +256,7 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "order": MetricInfo(
         "Order",
-        "Pass rate for reading order rules, checking that elements appear in the "
-        "expected sequence.",
+        "Pass rate for reading order rules, checking that elements appear in the expected sequence.",
     ),
     "is_bold": MetricInfo(
         "Is Bold",
@@ -287,8 +280,7 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "missing_sentence": MetricInfo(
         "Missing Sentence",
-        "Pass rate for missing sentence rules. Checks that expected sentences "
-        "appear in the output.",
+        "Pass rate for missing sentence rules. Checks that expected sentences appear in the output.",
     ),
     "missing_specific_sentence": MetricInfo(
         "Missing Specific Sentence",
@@ -300,28 +292,23 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "missing_word": MetricInfo(
         "Missing Word",
-        "Pass rate for missing word rules. Checks that expected words appear "
-        "in the output.",
+        "Pass rate for missing word rules. Checks that expected words appear in the output.",
     ),
     "too_many_sentence_occurence": MetricInfo(
         "Too Many Sentence Occurence",
-        "Pass rate for sentence frequency rules. Penalizes when sentences appear "
-        "more times than expected.",
+        "Pass rate for sentence frequency rules. Penalizes when sentences appear more times than expected.",
     ),
     "too_many_word_occurence": MetricInfo(
         "Too Many Word Occurence",
-        "Pass rate for word frequency rules. Penalizes when words appear more "
-        "times than expected.",
+        "Pass rate for word frequency rules. Penalizes when words appear more times than expected.",
     ),
     "unexpected_sentence": MetricInfo(
         "Unexpected Sentence",
-        "Pass rate for unexpected sentence rules. Penalizes extra sentences not "
-        "in the ground truth.",
+        "Pass rate for unexpected sentence rules. Penalizes extra sentences not in the ground truth.",
     ),
     "unexpected_word": MetricInfo(
         "Unexpected Word",
-        "Pass rate for unexpected word rules. Penalizes extra words not in the "
-        "ground truth.",
+        "Pass rate for unexpected word rules. Penalizes extra words not in the ground truth.",
     ),
     "table_adjacent_down": MetricInfo(
         "Table Adjacent Down",
@@ -373,11 +360,118 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
         "JSON subset match comparing expected vs actual extracted data. Supports date "
         "normalization and weighted scoring by leaf node count.",
     ),
+    "extract_value_precision": MetricInfo(
+        "Extract Value Precision",
+        "Native extract value precision using schema-aware typed comparison and "
+        "index-tolerant array matching: matched predicted values / predicted values.",
+    ),
+    "extract_value_recall": MetricInfo(
+        "Extract Value Recall",
+        "Native extract value recall using schema-aware typed comparison and "
+        "index-tolerant array matching: matched expected values / expected values.",
+    ),
+    "extract_value_f1": MetricInfo(
+        "Extract Value F1",
+        "Harmonic mean of native extract value precision and recall.",
+    ),
+    "extract_value_pass_rate": MetricInfo(
+        "Extract Value Pass Rate",
+        "Per-rule pass rate for native extract values using schema-aware typed comparison "
+        "with index-tolerant array matching.",
+    ),
+    "extract_bbox_iou": MetricInfo(
+        "Extract BBox IoU",
+        "Per-document metric: mean of per-field-rule intersection-over-union between ground-truth "
+        "extract-field bboxes and selected native extract field-citation bboxes.",
+    ),
+    "extract_bbox_recall": MetricInfo(
+        "Extract BBox Recall",
+        "Per-document metric: mean of per-field-rule ground-truth bbox area covered by selected "
+        "native extract field-citation bboxes.",
+    ),
+    "extract_element_pass_rate": MetricInfo(
+        "Extract Element Pass Rate",
+        "Native extract per-field pass rate where localization and typed attribution both pass.",
+    ),
+    "extract_localization_pass_rate": MetricInfo(
+        "Extract Localization Pass Rate",
+        "Native extract per-field pass rate where predicted field-citation bboxes meet strict "
+        "or relaxed localization criteria.",
+    ),
+    "extract_attribution_pass_rate": MetricInfo(
+        "Extract Attribution Pass Rate",
+        "Native extract per-field pass rate where the localized structured prediction matches "
+        "the expected value under typed comparison.",
+    ),
+    "extract_avg_iou": MetricInfo(
+        "Extract Avg IoU",
+        "Average per-rule IoU for extract field localization candidates.",
+    ),
+    "extract_avg_iou_matched": MetricInfo(
+        "Extract Avg IoU Matched",
+        "Average per-rule IoU across native extract fields that passed localization.",
+    ),
+    "extract_avg_iou_unmatched": MetricInfo(
+        "Extract Avg IoU Unmatched",
+        "Average per-rule IoU across native extract fields that failed localization.",
+    ),
+    "parse_field_element_pass_rate": MetricInfo(
+        "Parse Field Element Pass Rate",
+        "Parse-side field grounding pass rate where localization, trivial classification, "
+        "and typed attribution all pass against extract_field rules.",
+    ),
+    "parse_field_rule_pass_rate": MetricInfo(
+        "Parse Field Rule Pass Rate",
+        "Parse-side average pass rate across localization, classification, and attribution "
+        "checks for extract_field rules.",
+    ),
+    "parse_field_localization_pass_rate": MetricInfo(
+        "Parse Field Localization Pass Rate",
+        "Parse-side pass rate where granular parse support bboxes meet strict or relaxed "
+        "localization criteria for extract_field rules.",
+    ),
+    "parse_field_classification_pass_rate": MetricInfo(
+        "Parse Field Classification Pass Rate",
+        "Parse-side classification pass rate for extract_field rules. This is currently "
+        "trivial because field rules do not carry class labels.",
+    ),
+    "parse_field_attribution_pass_rate": MetricInfo(
+        "Parse Field Attribution Pass Rate",
+        "Parse-side pass rate where localized support text matches the expected field value under typed comparison.",
+    ),
+    "parse_field_avg_iou": MetricInfo(
+        "Parse Field Avg IoU",
+        "Average per-rule IoU for parse-side field grounding candidates.",
+    ),
+    "parse_field_avg_iou_matched": MetricInfo(
+        "Parse Field Avg IoU Matched",
+        "Average per-rule IoU across parse-side field rules that passed localization.",
+    ),
+    "parse_field_avg_iou_unmatched": MetricInfo(
+        "Parse Field Avg IoU Unmatched",
+        "Average per-rule IoU across parse-side field rules that failed localization.",
+    ),
+    "parse_field_iou": MetricInfo(
+        "Parse Field IoU",
+        "Per-document metric: mean of per-field-rule intersection-over-union between ground-truth "
+        "extract-field bboxes and selected parse support bboxes.",
+    ),
+    "parse_field_bbox_recall": MetricInfo(
+        "Parse Field BBox Recall",
+        "Per-document metric: mean of per-field-rule ground-truth bbox area covered by selected parse support bboxes.",
+    ),
+    "parse_field_text_similarity": MetricInfo(
+        "Parse Field Text Similarity",
+        "Average typed text similarity for string extract_field rules matched to parse support text.",
+    ),
+    "parse_field_gt_count": MetricInfo(
+        "Parse Field GT Count",
+        "Number of non-stray extract_field rules evaluated against parse output support.",
+    ),
     # ── Layout detection: attribution ──
     "af1": MetricInfo(
         "Attribution F1",
-        "Harmonic mean of LAP and LAR. Measures overall content attribution "
-        "accuracy in spatial regions.",
+        "Harmonic mean of LAP and LAR. Measures overall content attribution accuracy in spatial regions.",
     ),
     "lap": MetricInfo(
         "Local Attribution Precision",
@@ -397,13 +491,11 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "AP50": MetricInfo(
         "AP@50",
-        "Average Precision at IoU threshold 0.50. Measures detection accuracy "
-        "with a lenient overlap requirement.",
+        "Average Precision at IoU threshold 0.50. Measures detection accuracy with a lenient overlap requirement.",
     ),
     "AP75": MetricInfo(
         "AP@75",
-        "Average Precision at IoU threshold 0.75. Measures detection accuracy "
-        "with a strict overlap requirement.",
+        "Average Precision at IoU threshold 0.75. Measures detection accuracy with a strict overlap requirement.",
     ),
     "mean_f1": MetricInfo(
         "Mean F1",
@@ -417,23 +509,19 @@ METRIC_DEFINITIONS: dict[str, MetricInfo] = {
     ),
     "layout_localization_rule_pass_rate": MetricInfo(
         "Layout Localization Rule Pass Rate",
-        "Pass rate for bounding box localization rules. Checks spatial accuracy "
-        "of predicted element positions.",
+        "Pass rate for bounding box localization rules. Checks spatial accuracy of predicted element positions.",
     ),
     "layout_classification_rule_pass_rate": MetricInfo(
         "Layout Classification Rule Pass Rate",
-        "Pass rate for class label prediction rules. Checks whether predicted "
-        "element types match ground truth.",
+        "Pass rate for class label prediction rules. Checks whether predicted element types match ground truth.",
     ),
     "layout_attribution_rule_pass_rate": MetricInfo(
         "Layout Attribution Rule Pass Rate",
-        "Pass rate for content attribution rules. Checks whether predicted blocks "
-        "contain the correct text content.",
+        "Pass rate for content attribution rules. Checks whether predicted blocks contain the correct text content.",
     ),
     "layout_reading_order_pass_rate": MetricInfo(
         "Layout Reading Order Pass Rate",
-        "Pass rate for reading order rules. Checks whether layout elements are "
-        "ordered correctly.",
+        "Pass rate for reading order rules. Checks whether layout elements are ordered correctly.",
     ),
     # ── QA ──
     "qa_answer_match": MetricInfo(
@@ -580,7 +668,9 @@ TOOLTIP_JS = """\
     return _tipEl;
   }
   function _getTooltipText(metricKey) {
-    var tips = (typeof DATA !== 'undefined' && DATA.metricTooltips) ? DATA.metricTooltips : (typeof metricTooltips !== 'undefined' ? metricTooltips : {});
+    var tips = (typeof DATA !== 'undefined' && DATA.metricTooltips)
+      ? DATA.metricTooltips
+      : (typeof metricTooltips !== 'undefined' ? metricTooltips : {});
     var text = tips[metricKey] || '';
     if (!text) {
       if (metricKey.indexOf('field_accuracy_') === 0) {

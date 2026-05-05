@@ -121,6 +121,52 @@ class LayoutTestRule(BaseModel):
         )
 
 
+class ExtractFieldBbox(BaseModel):
+    """One evidence bbox attached to an extract_field rule."""
+
+    page: int = Field(ge=1, description="Page number (1-indexed)")
+    bbox: list[float] = Field(description="Normalized bbox [x, y, w, h] in [0,1] range (COCO format)")
+    source_bbox_index: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Zero-indexed position in the original source bbox list for the "
+            "underlying column. Enables lossless round-trip to the source "
+            "export. Null when no source-export index is available."
+        ),
+    )
+
+
+class ExtractFieldTestRule(BaseModel):
+    """Self-contained extract field test: value + evidence bboxes + verified flag."""
+
+    type: Literal["extract_field"] = "extract_field"
+    id: str | None = Field(default=None, description="Optional stable identifier")
+    field_path: str = Field(
+        description=('Dotted + bracketed path into expected_output, e.g. "line_items[0].description".'),
+    )
+    expected_value: str | int | float | bool | None = Field(
+        default=None,
+        description="Expected primitive value for this field path",
+    )
+    bboxes: list[ExtractFieldBbox] = Field(
+        default_factory=list,
+        description="Zero or more evidence bboxes for this field (multi-line cells have multiple)",
+    )
+    verified: bool = Field(
+        default=True,
+        description=(
+            "Whether the grounding has been human-verified. False for entries "
+            "assigned heuristically that need manual review (wrap extras, "
+            "suspected header clicks)."
+        ),
+    )
+    tags: list[str] = Field(default_factory=list, description="Optional per-rule tags")
+
+
+ExtractRuleUnion = ExtractFieldTestRule | dict[str, Any]
+
+
 class BaseTestCase(BaseModel):
     """Base test case with common fields."""
 
@@ -133,6 +179,48 @@ class BaseTestCase(BaseModel):
         default_factory=list,
         description="Optional top-level tags for document-level provenance, filtering, and grouping.",
     )
+
+
+class ExtractTestCase(BaseTestCase):
+    """Test case for EXTRACT product type."""
+
+    data_schema: dict[str, Any] = Field(
+        description="JSON schema for extraction (from test.json data_schema)",
+        alias="schema",
+    )
+    config: dict[str, Any] | None = Field(
+        default=None, description="Extraction config override (from test.json config)"
+    )
+    expected_output: dict[str, Any] | None = Field(
+        default=None,
+        description="Expected output for evaluation (from test.json expected_output)",
+    )
+    test_rules: list[ExtractRuleUnion] | None = Field(
+        default=None,
+        description="List of rule-based test definitions (from test.json test_rules)",
+    )
+
+    @field_validator("test_rules", mode="before")
+    @classmethod
+    def _coerce_extract_rules(cls, value: list[dict[str, Any]] | None) -> list[ExtractRuleUnion] | None:
+        if value is None:
+            return None
+        out: list[ExtractRuleUnion] = []
+        for rule in value:
+            if isinstance(rule, ExtractFieldTestRule):
+                out.append(rule)
+                continue
+            if isinstance(rule, dict) and rule.get("type") == "extract_field":
+                out.append(ExtractFieldTestRule.model_validate(rule))
+                continue
+            out.append(rule)
+        return out
+
+    def get_extract_field_rules(self) -> list[ExtractFieldTestRule]:
+        """Return only typed extract_field rules from test_rules."""
+        if not self.test_rules:
+            return []
+        return [rule for rule in self.test_rules if isinstance(rule, ExtractFieldTestRule)]
 
 
 class ParseTestCase(BaseTestCase):
@@ -276,4 +364,4 @@ class LayoutDetectionTestCase(BaseTestCase):
 
 
 # Union type for backward compatibility
-TestCase = ParseTestCase | LayoutDetectionTestCase
+TestCase = ExtractTestCase | ParseTestCase | LayoutDetectionTestCase

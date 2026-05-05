@@ -9,7 +9,6 @@ runs.
 
 import json
 import os
-import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -176,9 +175,7 @@ class PulseProvider(Provider):
 
     def run_inference(self, pipeline: PipelineSpec, request: InferenceRequest) -> RawInferenceResult:
         if request.product_type != ProductType.PARSE:
-            raise ProviderPermanentError(
-                f"PulseProvider only supports PARSE product type, got {request.product_type}"
-            )
+            raise ProviderPermanentError(f"PulseProvider only supports PARSE product type, got {request.product_type}")
 
         file_path = Path(request.source_file_path)
         if not file_path.exists():

@@ -9,7 +9,7 @@
 import json
 import logging
 import os
-from enum import Enum
+from enum import StrEnum
 from io import BytesIO
 from pathlib import Path
 
@@ -37,7 +37,7 @@ class ReadingOrderResponse(BaseModel):
     reading_order: list[int] = Field(description="List of element IDs in the correct reading order")
 
 
-class PictureType(str, Enum):
+class PictureType(StrEnum):
     """Valid picture types for classification."""
 
     bar_chart = "bar_chart"

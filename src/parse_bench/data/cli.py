@@ -109,7 +109,7 @@ class DataCLI:
         n_unique = len(all_pdfs)
         if n_unique < total_pdfs:
             print(f"{'Unique documents':<20} {'':>12} {n_unique:>8,}")
-            print(f"  (text_content and text_formatting share the same PDF files)")
+            print("  (text_content and text_formatting share the same PDF files)")
         print()
 
         # Docs on disk

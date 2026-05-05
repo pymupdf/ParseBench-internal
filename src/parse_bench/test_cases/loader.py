@@ -6,19 +6,26 @@ Supports two data formats:
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+from parse_bench.test_cases.extract_field_paths import (
+    validate_rules_match_expected_output,
+)
 from parse_bench.test_cases.parse_rule_schemas import coerce_parse_rule_list
 from parse_bench.test_cases.schema import (
+    ExtractTestCase,
     LayoutDetectionTestCase,
     ParseTestCase,
     QAConfig,
     TestCase,
 )
 
+logger = logging.getLogger(__name__)
+
 # Supported file extensions for input files
-SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".jfif"}
+SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".jfif", ".docx"}
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -173,9 +180,7 @@ def _load_jsonl_dataset(root_dir: Path) -> list[TestCase]:
                 tags=all_tags,
                 test_rules=typed_rules,
                 expected_markdown=expected_md,
-                allow_splitting_ambiguous_merged_tables=rule_meta.get(
-                    "allow_splitting_ambiguous_merged_tables", False
-                ),
+                allow_splitting_ambiguous_merged_tables=rule_meta.get("allow_splitting_ambiguous_merged_tables", False),
                 trm_unsupported=rule_meta.get("trm_unsupported", False),
                 max_top_title_rows=rule_meta.get("max_top_title_rows", 1),
             )
@@ -185,7 +190,12 @@ def _load_jsonl_dataset(root_dir: Path) -> list[TestCase]:
     return test_cases
 
 
-def load_test_case(file_path: Path, test_json_path: Path | None = None) -> TestCase | None:
+def load_test_case(
+    file_path: Path,
+    test_json_path: Path | None = None,
+    *,
+    product_type_hint: str | None = None,
+) -> TestCase | None:
     """
     Load a single test case for a specific file.
 
@@ -244,6 +254,38 @@ def load_test_case(file_path: Path, test_json_path: Path | None = None) -> TestC
 
     # Check for layout rules in test_rules
     has_layout_rules = any(r.get("type") == "layout" for r in test_rules)
+
+    # If data_schema is present, keep it as an EXTRACT test case unless the
+    # caller is explicitly loading this corpus for PARSE/LAYOUT_DETECTION and
+    # the file carries layout rules.
+    prefer_layout_rules = bool(product_type_hint and product_type_hint.upper() in {"PARSE", "LAYOUT_DETECTION"})
+    if data_schema and not (prefer_layout_rules and has_layout_rules):
+        extract_case = ExtractTestCase(
+            test_id=test_id,
+            group=group,
+            file_path=file_path,
+            tags=all_tags,
+            schema=data_schema,
+            config=test_config.get("config"),
+            expected_output=test_config.get("expected_output"),
+            test_rules=test_rules,
+        )
+
+        extract_field_rules = extract_case.get_extract_field_rules()
+        expected_output = test_config.get("expected_output")
+        if extract_field_rules and expected_output is not None:
+            drifts = validate_rules_match_expected_output(extract_field_rules, expected_output)
+            if drifts:
+                logger.warning(
+                    "extract_field rules disagree with expected_output in %s "
+                    "(%d drifts, first 3: %s). Rules are authoritative; "
+                    "expected_output is treated as a hint.",
+                    test_json_path,
+                    len(drifts),
+                    drifts[:3],
+                )
+
+        return extract_case
 
     # If layout rules present, create LayoutDetectionTestCase
     if has_layout_rules:
@@ -344,16 +386,20 @@ def load_test_cases(
     if not root_dir.is_dir():
         raise ValueError(f"Path is not a directory: {root_dir}")
 
-    # Auto-detect JSONL format
+    # Auto-detect parse-bench JSONL format. Some sidecar datasets include
+    # companion *.jsonl artifacts next to PDFs; if sidecar test files exist,
+    # prefer the sidecar loader.
     jsonl_files = list(root_dir.glob("*.jsonl"))
-    if jsonl_files:
+    has_sidecar_tests = any(root_dir.rglob("*.test.json"))
+    is_extract = product_type and product_type.upper() == "EXTRACT"
+    if jsonl_files and not has_sidecar_tests and not is_extract:
         return _load_jsonl_dataset(root_dir)
 
     test_cases: list[TestCase] = []
 
     # Determine if test.json is required
     is_layout_detection = product_type and product_type.upper() == "LAYOUT_DETECTION"
-    must_have_test_json = require_test_json or is_layout_detection
+    must_have_test_json = require_test_json or is_layout_detection or is_extract
 
     # Special-case: Standalone test.json files (no PDFs in same dir)
     # This supports multi-task evaluation where tests and PDFs are in different directories
@@ -384,8 +430,10 @@ def load_test_cases(
                     file_path = root_dir / f"{doc_name}.pdf"
 
                 # Use unified load_test_case function
-                result = load_test_case(file_path, test_json_path)
+                result = load_test_case(file_path, test_json_path, product_type_hint=product_type)
                 if result is not None:
+                    if is_extract and not isinstance(result, ExtractTestCase):
+                        raise ValueError(f"EXTRACT requires data_schema in {test_json_path}")
                     test_cases.append(result)
 
             test_cases.sort(key=lambda tc: tc.test_id)
@@ -418,10 +466,14 @@ def load_test_cases(
 
                 # Try to load test case
                 try:
-                    result = load_test_case(file_path)
+                    result = load_test_case(file_path, product_type_hint=product_type)
                     if result is None:
                         if must_have_test_json:
                             # For LAYOUT_DETECTION, missing test.json is an error
+                            if is_extract:
+                                raise ValueError(
+                                    f"Missing test.json for {file_path}. EXTRACT requires schema from test.json"
+                                )
                             if is_layout_detection:
                                 raise ValueError(
                                     f"Missing test.json for {file_path}. "
@@ -443,6 +495,10 @@ def load_test_cases(
                             )
 
                     if result is not None:
+                        if is_extract and not isinstance(result, ExtractTestCase):
+                            raise ValueError(
+                                f"EXTRACT requires data_schema in {file_path.parent / f'{file_path.stem}.test.json'}"
+                            )
                         test_cases.append(result)
                 except ValueError as e:
                     # Invalid test.json - raise error
@@ -471,10 +527,14 @@ def load_test_cases(
 
             # Try to load test case
             try:
-                result = load_test_case(file_path)
+                result = load_test_case(file_path, product_type_hint=product_type)
                 if result is None:
                     if must_have_test_json:
                         # For LAYOUT_DETECTION, missing test.json is an error
+                        if is_extract:
+                            raise ValueError(
+                                f"Missing test.json for {file_path}. EXTRACT requires schema from test.json"
+                            )
                         if is_layout_detection:
                             raise ValueError(
                                 f"Missing test.json for {file_path}. "
@@ -495,6 +555,10 @@ def load_test_cases(
                         )
 
                 if result is not None:
+                    if is_extract and not isinstance(result, ExtractTestCase):
+                        raise ValueError(
+                            f"EXTRACT requires data_schema in {file_path.parent / f'{file_path.stem}.test.json'}"
+                        )
                     test_cases.append(result)
             except ValueError as e:
                 # Invalid test.json - raise error

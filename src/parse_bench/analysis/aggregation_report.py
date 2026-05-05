@@ -10,7 +10,7 @@ warm editorial palette) as the detailed evaluation reports.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +50,7 @@ def _extract_category_data(name: str, summary: EvaluationSummary) -> dict[str, A
     for key in sorted(metrics.keys()):
         if not key.startswith("avg_"):
             continue
-        metric_name = key[len("avg_"):]
+        metric_name = key[len("avg_") :]
         # Skip _predicted duplicates and _judge duplicates
         if "_predicted" in metric_name or "_judge" in metric_name:
             continue
@@ -67,7 +67,10 @@ def _extract_category_data(name: str, summary: EvaluationSummary) -> dict[str, A
     # Fall back if default isn't available in the metrics list
     metric_names_set = {m["name"] for m in metric_list}
     if default_metric not in metric_names_set:
-        default_metric = "rule_pass_rate" if "rule_pass_rate" in metric_names_set else (metric_list[0]["name"] if metric_list else "")
+        if "rule_pass_rate" in metric_names_set:
+            default_metric = "rule_pass_rate"
+        else:
+            default_metric = metric_list[0]["name"] if metric_list else ""
 
     return {
         "name": name,
@@ -119,7 +122,7 @@ def generate_aggregation_report(
     data_blob = {
         "pipelineName": pipeline_name,
         "pipelineMetadata": pipeline_metadata,
-        "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "generatedAt": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "totalFiles": total_files,
         "categories": categories,
         "metricTooltips": tooltip_dict(),
@@ -157,7 +160,14 @@ def generate_aggregation_report(
 # HTML template parts — uses same design system as detailed_report.py
 # ---------------------------------------------------------------------------
 
-_HTML_HEAD = """\
+_FONT_URL = (
+    "https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@"
+    "0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400"
+    "&family=Plus+Jakarta+Sans:wght@400;500;600;700"
+    "&family=JetBrains+Mono:wght@400;500&display=swap"
+)
+
+_HTML_HEAD = f"""\
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -166,11 +176,12 @@ _HTML_HEAD = """\
 <title>Evaluation Report</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="{_FONT_URL}" rel="stylesheet">
 <style>
 """
 
-_CSS = """\
+_CSS = (
+    """\
 /* ───── Reset & variables (shared with detailed_report.py) ───── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -392,7 +403,9 @@ body {
     .report-container { padding: 16px 12px 48px; }
     .summary-row { grid-template-columns: 1fr; }
 }
-""" + TOOLTIP_CSS
+"""
+    + TOOLTIP_CSS
+)
 
 _HTML_BODY = """\
 <body>
@@ -409,7 +422,8 @@ _HTML_BODY = """\
 </div>
 """
 
-_JS = """\
+_JS = (
+    """\
 (function() {
   function colorClass(rate) {
     if (rate >= 80) return 'emerald';
@@ -429,7 +443,9 @@ _JS = """\
     return d.innerHTML;
   }
 
-""" + TOOLTIP_JS + """
+"""
+    + TOOLTIP_JS
+    + """
 
   // ─── State: selected metric per category ───
   var selectedMetrics = {};
@@ -500,7 +516,8 @@ _JS = """\
 
       var html = '<h3>' + esc(cat.displayName) + ' <span class="file-count">(' + cat.files + ' files)</span></h3>';
       html += '<div class="main-score color-' + c + '">' + pct(mainVal) + '</div>';
-      html += '<div class="progress-bar-track"><div class="progress-bar-fill bar-' + c + '" style="width:' + Math.min(mainVal, 100) + '%"></div></div>';
+      html += '<div class="progress-bar-track"><div class="progress-bar-fill bar-' + c
+        + '" style="width:' + Math.min(mainVal, 100) + '%"></div></div>';
 
       // Metric selector dropdown
       html += '<select class="metric-selector" data-cat="' + esc(cat.name) + '">';
@@ -561,3 +578,4 @@ _JS = """\
   renderCategories();
 })();
 """
+)

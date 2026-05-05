@@ -71,8 +71,10 @@ class TestStatusRouting:
     def test_status_test_flag_checks_test_subdir(self, tmp_path: Path) -> None:
         # Use a clean cwd so the default ./data/test resolves under tmp_path.
         cli = DataCLI()
-        with patch("parse_bench.data.cli.is_dataset_ready", return_value=False) as mock_ready, \
-             patch("parse_bench.data.cli.Path.cwd", return_value=tmp_path):
+        with (
+            patch("parse_bench.data.cli.is_dataset_ready", return_value=False) as mock_ready,
+            patch("parse_bench.data.cli.Path.cwd", return_value=tmp_path),
+        ):
             rc = cli.status(test=True)
         # Status returns 1 when not ready; we only care about which path it checked.
         assert rc == 1
@@ -94,9 +96,11 @@ def test_pipeline_run_input_dir_routing(test_flag: bool, expected_relative: Path
     from parse_bench.pipeline.cli import PipelineCLI
 
     cli = PipelineCLI()
-    with patch("parse_bench.pipeline.cli.is_dataset_ready", return_value=True), \
-         patch("parse_bench.pipeline.cli.InferenceCLI") as mock_inf_cls, \
-         patch.object(cli, "_run_multi_group_evaluation", return_value=0):
+    with (
+        patch("parse_bench.pipeline.cli.is_dataset_ready", return_value=True),
+        patch("parse_bench.pipeline.cli.InferenceCLI") as mock_inf_cls,
+        patch.object(cli, "_run_multi_group_evaluation", return_value=0),
+    ):
         mock_inf = mock_inf_cls.return_value
         mock_inf.run.return_value = 0
         rc = cli.run(pipeline="dummy", test=test_flag)
@@ -122,10 +126,12 @@ def test_pipeline_run_auto_download_routing(test_flag: bool, expected_relative: 
     from parse_bench.pipeline.cli import PipelineCLI
 
     cli = PipelineCLI()
-    with patch("parse_bench.pipeline.cli.is_dataset_ready", return_value=False), \
-         patch("parse_bench.pipeline.cli.download_dataset") as mock_dl, \
-         patch("parse_bench.pipeline.cli.InferenceCLI") as mock_inf_cls, \
-         patch.object(cli, "_run_multi_group_evaluation", return_value=0):
+    with (
+        patch("parse_bench.pipeline.cli.is_dataset_ready", return_value=False),
+        patch("parse_bench.pipeline.cli.download_dataset") as mock_dl,
+        patch("parse_bench.pipeline.cli.InferenceCLI") as mock_inf_cls,
+        patch.object(cli, "_run_multi_group_evaluation", return_value=0),
+    ):
         mock_inf = mock_inf_cls.return_value
         mock_inf.run.return_value = 0
         rc = cli.run(pipeline="dummy", test=test_flag)

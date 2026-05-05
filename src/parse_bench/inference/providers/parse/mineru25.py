@@ -62,8 +62,7 @@ class MinerU25Provider(Provider):
         server_url = self.base_config.get("server_url") or os.getenv("MINERU25_SERVER_URL")
         if not server_url:
             raise ProviderConfigError(
-                "MinerU25 provider requires 'server_url' in config or "
-                "MINERU25_SERVER_URL in the environment."
+                "MinerU25 provider requires 'server_url' in config or MINERU25_SERVER_URL in the environment."
             )
         self._server_url: str = str(server_url)
         self._timeout = self.base_config.get("timeout", 600)

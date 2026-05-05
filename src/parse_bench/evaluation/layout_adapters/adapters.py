@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, cast
 
 from parse_bench.evaluation.layout_adapters.base import LayoutAdapter
 from parse_bench.evaluation.layout_adapters.registry import register_layout_adapter
@@ -39,6 +40,28 @@ from parse_bench.schemas.layout_detection_output import (
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.test_cases.schema import TestCase
+
+
+@dataclass(frozen=True)
+class _GranularSegment:
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+@dataclass(frozen=True)
+class _GranularTextUnit:
+    text: str
+    bbox: _GranularSegment
+    order_index: int
+
+
+@dataclass(frozen=True)
+class _GranularPage:
+    page_number: int
+    lines: list[_GranularTextUnit]
+    words: list[_GranularTextUnit]
 
 
 @register_layout_adapter("__default__", priority=-100)
@@ -178,6 +201,312 @@ class LlamaParseLayoutAdapter(LayoutAdapter):
         page_width = float(raw_page.get("width") or layout_output.image_width or 1)
         page_height = float(raw_page.get("height") or layout_output.image_height or 1)
         return parse_pred_blocks(items, page_md, page_width, page_height)
+
+    def to_granular_pages(self, inference_result: InferenceResult) -> list[_GranularPage]:
+        raw_output = inference_result.raw_output if isinstance(inference_result.raw_output, dict) else {}
+        grounded_pages = raw_output.get("v2_grounded_items", raw_output.get("grounded_items"))
+        return _build_llamaparse_granular_pages_from_payload(grounded_pages)
+
+
+def _build_llamaparse_granular_pages_from_payload(grounded_pages: Any) -> list[_GranularPage]:
+    if not isinstance(grounded_pages, list):
+        return []
+
+    pages: list[_GranularPage] = []
+    for page_payload in grounded_pages:
+        if not isinstance(page_payload, dict) or page_payload.get("success") is False:
+            continue
+
+        page_number = page_payload.get("page_number")
+        page_width = page_payload.get("page_width")
+        page_height = page_payload.get("page_height")
+        raw_items = page_payload.get("items")
+        if not isinstance(page_number, int):
+            continue
+        if not isinstance(page_width, (int, float)) or page_width <= 0:
+            continue
+        if not isinstance(page_height, (int, float)) or page_height <= 0:
+            continue
+        if not isinstance(raw_items, list):
+            continue
+
+        line_units: list[_GranularTextUnit] = []
+        word_units: list[_GranularTextUnit] = []
+        for order_index, line_context in enumerate(_iter_llamaparse_line_contexts(raw_items)):
+            line_text = line_context["text"]
+            line_bbox = line_context["bbox"]
+            if not line_text or line_bbox is None:
+                continue
+
+            normalized_line_bbox = _normalize_grounded_bbox(
+                line_bbox,
+                page_width=float(page_width),
+                page_height=float(page_height),
+            )
+            if normalized_line_bbox is None:
+                continue
+
+            line_units.append(
+                _GranularTextUnit(
+                    text=line_text,
+                    bbox=normalized_line_bbox,
+                    order_index=order_index,
+                )
+            )
+            word_units.extend(
+                _build_llamaparse_word_units(
+                    line_context,
+                    page_width=float(page_width),
+                    page_height=float(page_height),
+                    order_index=order_index,
+                )
+            )
+
+        deduped_lines = _dedupe_granular_units(line_units)
+        deduped_words = _dedupe_granular_units(word_units)
+        if deduped_lines or deduped_words:
+            pages.append(_GranularPage(page_number=page_number, lines=deduped_lines, words=deduped_words))
+
+    return pages
+
+
+def _iter_llamaparse_line_contexts(raw_nodes: list[Any]) -> list[dict[str, Any]]:
+    contexts: list[dict[str, Any]] = []
+    for raw_node in raw_nodes:
+        contexts.extend(_collect_llamaparse_line_contexts(raw_node))
+    return contexts
+
+
+def _collect_llamaparse_line_contexts(raw_node: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_node, dict):
+        return []
+
+    contexts: list[dict[str, Any]] = []
+    grounding = raw_node.get("grounding")
+    if isinstance(grounding, dict):
+        source_text = _resolve_llamaparse_grounding_source_text(raw_node, grounding)
+        raw_lines = grounding.get("lines")
+        if source_text and isinstance(raw_lines, list):
+            contexts.extend(_build_llamaparse_line_context_entries(source_text, raw_lines))
+
+        source_rows = raw_node.get("rows")
+        grounded_rows = grounding.get("rows")
+        if isinstance(source_rows, list) and isinstance(grounded_rows, list):
+            contexts.extend(_collect_llamaparse_table_cell_contexts(source_rows, grounded_rows))
+
+    child_items = raw_node.get("items")
+    if isinstance(child_items, list):
+        for child in child_items:
+            contexts.extend(_collect_llamaparse_line_contexts(child))
+
+    return contexts
+
+
+def _build_llamaparse_line_context_entries(source_text: str, raw_lines: list[Any]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for raw_line in raw_lines:
+        if not isinstance(raw_line, dict):
+            continue
+        line_span = _coerce_span(raw_line.get("span"))
+        line_bbox = raw_line.get("bbox")
+        if line_span is None or not isinstance(line_bbox, dict):
+            continue
+        line_text = _normalize_llamaparse_grounded_text(_slice_span_text(source_text, line_span))
+        if not line_text:
+            continue
+        entries.append(
+            {
+                "text": line_text,
+                "bbox": line_bbox,
+                "source_text": source_text,
+                "line_span": line_span,
+                "raw_words": raw_line.get("words"),
+            }
+        )
+    return entries
+
+
+def _collect_llamaparse_table_cell_contexts(source_rows: list[Any], raw_rows: list[Any]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for source_row, grounding_row in zip(source_rows, raw_rows, strict=False):
+        if not isinstance(source_row, list) or not isinstance(grounding_row, list):
+            continue
+        for source_cell, grounding_cell in zip(source_row, grounding_row, strict=False):
+            if not isinstance(grounding_cell, dict):
+                continue
+            cell_text = _coerce_llamaparse_cell_text(source_cell)
+            cell_lines = grounding_cell.get("lines")
+            if cell_text and isinstance(cell_lines, list):
+                entries.extend(_build_llamaparse_line_context_entries(cell_text, cell_lines))
+    return entries
+
+
+def _resolve_llamaparse_grounding_source_text(raw_node: dict[str, Any], grounding: dict[str, Any]) -> str:
+    source_name = grounding.get("source")
+    if source_name == "caption":
+        source_text = raw_node.get("caption")
+    elif source_name == "value":
+        source_text = raw_node.get("value")
+    else:
+        source_text = raw_node.get("md")
+
+    if isinstance(source_text, str) and source_text:
+        return source_text
+    for candidate_key in ("value", "md", "caption", "html"):
+        candidate = raw_node.get(candidate_key)
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return ""
+
+
+def _build_llamaparse_word_units(
+    line_context: dict[str, Any],
+    *,
+    page_width: float,
+    page_height: float,
+    order_index: int,
+) -> list[_GranularTextUnit]:
+    source_text = str(line_context.get("source_text") or "")
+    line_span = _coerce_span(line_context.get("line_span"))
+    raw_words = line_context.get("raw_words")
+    if not source_text or line_span is None or not isinstance(raw_words, list):
+        return []
+
+    units: list[_GranularTextUnit] = []
+    for token_start, token_end in _iter_token_spans(source_text, line_span):
+        matching_word_boxes: list[dict[str, Any]] = []
+        for raw_word in raw_words:
+            if not isinstance(raw_word, dict):
+                continue
+            word_span = _coerce_span(raw_word.get("span"))
+            word_bbox = raw_word.get("bbox")
+            if word_span is None or not isinstance(word_bbox, dict):
+                continue
+            if word_span[1] <= token_start or word_span[0] >= token_end:
+                continue
+            matching_word_boxes.append(word_bbox)
+
+        if not matching_word_boxes:
+            continue
+
+        word_text = _normalize_llamaparse_grounded_text(_slice_span_text(source_text, (token_start, token_end)))
+        if not word_text:
+            continue
+
+        normalized_bbox = _normalize_grounded_bbox(
+            _merge_llamaparse_bboxes(matching_word_boxes),
+            page_width=page_width,
+            page_height=page_height,
+        )
+        if normalized_bbox is not None:
+            units.append(_GranularTextUnit(text=word_text, bbox=normalized_bbox, order_index=order_index))
+
+    return units
+
+
+def _coerce_span(raw_span: Any) -> tuple[int, int] | None:
+    if not isinstance(raw_span, list | tuple) or len(raw_span) != 2:
+        return None
+    try:
+        start = int(raw_span[0])
+        end = int(raw_span[1])
+    except (TypeError, ValueError):
+        return None
+    if end <= start:
+        return None
+    return (start, end)
+
+
+def _slice_span_text(source_text: str, span: tuple[int, int]) -> str:
+    start = max(span[0], 0)
+    source_bytes = source_text.encode("utf-8")
+    end = min(span[1], len(source_bytes))
+    if end <= start:
+        return ""
+    return source_bytes[start:end].decode("utf-8", errors="ignore")
+
+
+def _normalize_llamaparse_grounded_text(text: str) -> str:
+    normalized = text.replace("<br/>", "\n").replace("<br />", "\n")
+    if "<" in normalized and ">" in normalized:
+        normalized = extract_text_from_html(normalized)
+    return normalized.strip()
+
+
+def _coerce_llamaparse_cell_text(source_cell: Any) -> str:
+    if isinstance(source_cell, str):
+        return source_cell
+    if isinstance(source_cell, dict):
+        for key in ("value", "md", "text", "html"):
+            value = source_cell.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return ""
+
+
+def _iter_token_spans(source_text: str, line_span: tuple[int, int]) -> list[tuple[int, int]]:
+    line_text = _slice_span_text(source_text, line_span)
+    return [
+        (
+            line_span[0] + len(line_text[: match.start()].encode("utf-8")),
+            line_span[0] + len(line_text[: match.end()].encode("utf-8")),
+        )
+        for match in re.finditer(r"\S+", line_text, flags=re.UNICODE)
+    ]
+
+
+def _merge_llamaparse_bboxes(raw_bboxes: list[dict[str, Any]]) -> dict[str, float]:
+    x1 = min(float(bbox.get("x", 0.0)) for bbox in raw_bboxes)
+    y1 = min(float(bbox.get("y", 0.0)) for bbox in raw_bboxes)
+    x2 = max(float(bbox.get("x", 0.0)) + float(bbox.get("w", 0.0)) for bbox in raw_bboxes)
+    y2 = max(float(bbox.get("y", 0.0)) + float(bbox.get("h", 0.0)) for bbox in raw_bboxes)
+    return {"x": x1, "y": y1, "w": max(0.0, x2 - x1), "h": max(0.0, y2 - y1)}
+
+
+def _dedupe_granular_units(units: list[_GranularTextUnit]) -> list[_GranularTextUnit]:
+    deduped: list[_GranularTextUnit] = []
+    seen: set[tuple[str, float, float, float, float]] = set()
+    for unit in units:
+        key = (
+            unit.text,
+            round(unit.bbox.x, 6),
+            round(unit.bbox.y, 6),
+            round(unit.bbox.w, 6),
+            round(unit.bbox.h, 6),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(unit)
+    return deduped
+
+
+def _normalize_grounded_bbox(
+    bbox_payload: Any,
+    *,
+    page_width: float,
+    page_height: float,
+) -> _GranularSegment | None:
+    if not isinstance(bbox_payload, dict):
+        return None
+
+    x = bbox_payload.get("x")
+    y = bbox_payload.get("y")
+    w = bbox_payload.get("w")
+    h = bbox_payload.get("h")
+    if not all(isinstance(value, (int, float)) for value in (x, y, w, h)):
+        return None
+    x_num = float(cast(int | float, x))
+    y_num = float(cast(int | float, y))
+    w_num = float(cast(int | float, w))
+    h_num = float(cast(int | float, h))
+
+    return _GranularSegment(
+        x=x_num / page_width,
+        y=y_num / page_height,
+        w=w_num / page_width,
+        h=h_num / page_height,
+    )
 
 
 @register_layout_adapter("chunkr", priority=90)

@@ -9,6 +9,7 @@ API format: POST /predict with {"image_base64": "..."} → {"markdown": "...", "
 import asyncio
 import base64
 import io
+import os
 import re
 from datetime import datetime
 from pathlib import Path

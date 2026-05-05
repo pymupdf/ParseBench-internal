@@ -14,7 +14,6 @@ from parse_bench.data.download import default_data_dir, download_dataset, is_dat
 from parse_bench.evaluation.cli import EvaluationCLI
 from parse_bench.inference.cli import InferenceCLI
 
-
 # Shared inference groups: multiple eval categories share one inference dir.
 # Maps inference dir name -> list of eval categories.
 _SHARED_EVAL_GROUPS = {
@@ -313,9 +312,7 @@ class PipelineCLI:
         print(f"\nDiscovered {len(groups)} categories: {', '.join(groups)}")
 
         # Reverse lookup: eval group -> inference dir
-        _SHARED_INFERENCE_GROUPS = {
-            eg: ig for ig, egs in _SHARED_EVAL_GROUPS.items() for eg in egs
-        }
+        _SHARED_INFERENCE_GROUPS = {eg: ig for ig, egs in _SHARED_EVAL_GROUPS.items() for eg in egs}
 
         # Run evaluation per category
         for i, g in enumerate(groups, 1):
@@ -392,7 +389,7 @@ class PipelineCLI:
         print("Pipeline Complete!")
         print("=" * 60)
         print(f"\nResults: {pipeline_output_dir}")
-        print(f"\nTo view reports with PDF rendering, run:")
+        print("\nTo view reports with PDF rendering, run:")
         print(f"  uv run parse-bench serve {pipeline_output_dir}")
 
         return 0

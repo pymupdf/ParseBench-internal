@@ -3,6 +3,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Discriminator, Field
 
+from parse_bench.schemas.extract_output import ExtractOutput
 from parse_bench.schemas.layout_detection_output import LayoutOutput
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.schemas.pipeline import PipelineSpec
@@ -26,7 +27,7 @@ class InferenceRequest(BaseModel):
 
 
 PipelineOutputType = Annotated[
-    ParseOutput | LayoutOutput,
+    ParseOutput | LayoutOutput | ExtractOutput,
     Discriminator("task_type"),
 ]
 

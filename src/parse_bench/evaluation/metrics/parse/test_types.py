@@ -1,9 +1,9 @@
 """Test type definitions for parse evaluation."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class TestType(str, Enum):
+class TestType(StrEnum):
     """Test types for parse evaluation."""
 
     BASELINE = "baseline"

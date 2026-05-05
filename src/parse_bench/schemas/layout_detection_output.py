@@ -1,6 +1,6 @@
 """Normalized schemas for layout detection outputs."""
 
-from enum import Enum, IntEnum
+from enum import IntEnum, StrEnum
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Discriminator, Field, Tag, field_validator
@@ -278,7 +278,7 @@ CHUNKR_STR_TO_LABEL: dict[str, ChunkrLabel] = {
 }
 
 
-class LayoutDetectionModel(str, Enum):
+class LayoutDetectionModel(StrEnum):
     """Supported layout detection models."""
 
     YOLO_DOCLAYNET = "yolo_doclaynet"

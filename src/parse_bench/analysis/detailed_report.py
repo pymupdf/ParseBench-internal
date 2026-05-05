@@ -25,7 +25,6 @@ from parse_bench.analysis.metric_definitions import (
     TOOLTIP_CSS,
     TOOLTIP_JS,
     display_name,
-    display_name_dict,
     tooltip_dict,
 )
 from parse_bench.schemas.evaluation import EvaluationSummary
@@ -350,7 +349,8 @@ _HTML_HEAD = """\
 <style>
 """
 
-_CSS = """\
+_CSS = (
+    """\
 /* ───── Reset & variables ───── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -1197,9 +1197,12 @@ body {
     .controls-bar input[type="text"] { width: 100%; }
     .col-tags { display: none; }
 }
-""" + TOOLTIP_CSS
+"""
+    + TOOLTIP_CSS
+)
 
-_JS = r"""
+_JS = (
+    r"""
 (function() {
 "use strict";
 
@@ -1232,7 +1235,9 @@ function esc(s) {
     return d.innerHTML;
 }
 
-""" + TOOLTIP_JS + r"""
+"""
+    + TOOLTIP_JS
+    + r"""
 
 // Toggle between raw/rendered markdown view
 window.toggleOutputView = function(panelId, mode) {
@@ -2059,6 +2064,7 @@ if (document.readyState === 'loading') {
 
 })();
 """
+)
 
 _HTML_BODY = """\
 </style>
@@ -2202,12 +2208,14 @@ def generate_detailed_html_report(
         subtitle_parts.append("Product: " + product_type)
     if completed_str:
         subtitle_parts.append("Generated: " + completed_str)
-    subtitle_text = "  |  ".join(subtitle_parts) if subtitle_parts else ("Generated: " + completed_str if completed_str else "")
+    subtitle_text = (
+        "  |  ".join(subtitle_parts) if subtitle_parts else ("Generated: " + completed_str if completed_str else "")
+    )
 
-    parts.append('<script>')
-    parts.append('document.querySelector(".report-header h1").textContent = ' + json.dumps(title_text) + ';')
-    parts.append('document.getElementById("report-subtitle").textContent = ' + json.dumps(subtitle_text) + ';')
-    parts.append('</script>\n')
+    parts.append("<script>")
+    parts.append('document.querySelector(".report-header h1").textContent = ' + json.dumps(title_text) + ";")
+    parts.append('document.getElementById("report-subtitle").textContent = ' + json.dumps(subtitle_text) + ";")
+    parts.append("</script>\n")
 
     # Data blob
     parts.append("<script>\nconst DATA = ")

@@ -6,6 +6,7 @@ from parse_bench.schemas.evaluation import (
     MetricValue,
     RunStat,
 )
+from parse_bench.schemas.extract_output import ExtractOutput, FieldCitation
 from parse_bench.schemas.parse_output import PageIR, ParseOutput
 from parse_bench.schemas.pipeline import PipelineSpec
 from parse_bench.schemas.pipeline_io import (
@@ -18,6 +19,8 @@ from parse_bench.schemas.product import ProductType
 __all__ = [
     "EvaluationResult",
     "EvaluationSummary",
+    "ExtractOutput",
+    "FieldCitation",
     "InferenceRequest",
     "InferenceResult",
     "MetricValue",

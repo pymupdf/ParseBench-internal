@@ -171,9 +171,7 @@ class AnalysisCLI:
                 category_dirs = sorted(
                     d
                     for d in evaluation_path.iterdir()
-                    if d.is_dir()
-                    and not d.name.startswith("_")
-                    and (d / "_evaluation_report.json").exists()
+                    if d.is_dir() and not d.name.startswith("_") and (d / "_evaluation_report.json").exists()
                 )
                 if category_dirs:
                     print(
@@ -282,7 +280,6 @@ class AnalysisCLI:
             print(f"Error: {e}", file=sys.stderr)
             traceback.print_exc()
             return 1
-
 
     def generate_leaderboard(
         self,
@@ -439,9 +436,7 @@ class AnalysisCLI:
                 groups = sorted(
                     d.name
                     for d in eval_path.iterdir()
-                    if d.is_dir()
-                    and not d.name.startswith("_")
-                    and (d / "_evaluation_report.json").exists()
+                    if d.is_dir() and not d.name.startswith("_") and (d / "_evaluation_report.json").exists()
                 )
 
             if not groups:

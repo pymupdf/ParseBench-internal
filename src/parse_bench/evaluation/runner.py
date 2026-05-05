@@ -28,10 +28,12 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from parse_bench.evaluation.evaluators.extract import ExtractEvaluator
 from parse_bench.evaluation.evaluators.layoutdet import LayoutDetectionEvaluator
 from parse_bench.evaluation.evaluators.parse import ParseEvaluator
 from parse_bench.evaluation.evaluators.qa import QAEvaluator
 from parse_bench.evaluation.layout_adapters import create_layout_adapter_for_result
+from parse_bench.evaluation.metric_aggregation import add_precision_recall_f1_aggregates
 from parse_bench.evaluation.stats import build_operational_stats
 from parse_bench.schemas.evaluation import EvaluationResult, EvaluationSummary
 from parse_bench.schemas.layout_detection_output import LayoutOutput
@@ -39,7 +41,9 @@ from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.schemas.product import ProductType
 from parse_bench.test_cases import load_test_cases
 from parse_bench.test_cases.parse_rule_schemas import get_rule_type
+from parse_bench.test_cases.rule_filters import filter_verified_test_rules
 from parse_bench.test_cases.schema import (
+    ExtractTestCase,
     LayoutDetectionTestCase,
     ParseTestCase,
     TestCase,
@@ -59,6 +63,7 @@ def _evaluate_single_worker(
     default_layout_ontology: str = "basic",
     enable_teds: bool = False,
     skip_rules: bool = False,
+    verified_only: bool = False,
 ) -> dict[str, Any]:
     """
     Worker function for parallel evaluation using ProcessPoolExecutor.
@@ -76,9 +81,11 @@ def _evaluate_single_worker(
     :param default_layout_ontology: Default ontology to use when test case omits ontology
     :param enable_teds: Enable TEDS metric computation in parse evaluation
     :param skip_rules: Skip rule-based metric computation in parse evaluation
+    :param verified_only: Discard test rules explicitly marked verified=false
     :return: Serialized EvaluationResult dict
     """
     # Import here to avoid circular imports and ensure fresh state in worker
+    from parse_bench.evaluation.evaluators.extract import ExtractEvaluator
     from parse_bench.evaluation.evaluators.layoutdet import LayoutDetectionEvaluator
     from parse_bench.evaluation.evaluators.parse import ParseEvaluator
     from parse_bench.evaluation.layout_adapters import (
@@ -88,6 +95,7 @@ def _evaluate_single_worker(
     from parse_bench.schemas.pipeline_io import InferenceResult
     from parse_bench.schemas.product import ProductType
     from parse_bench.test_cases.schema import (
+        ExtractTestCase,
         LayoutDetectionTestCase,
         ParseTestCase,
     )
@@ -97,20 +105,29 @@ def _evaluate_single_worker(
         inference_result = InferenceResult.model_validate(inference_result_dict)
 
         # Deserialize test case based on type
-        test_case: LayoutDetectionTestCase | ParseTestCase
+        test_case: ExtractTestCase | LayoutDetectionTestCase | ParseTestCase
         if test_case_type == "layout_detection":
             test_case = LayoutDetectionTestCase.model_validate(test_case_dict)
         elif test_case_type == "parse":
             test_case = ParseTestCase.model_validate(test_case_dict)
+        elif test_case_type == "extract":
+            test_case = ExtractTestCase.model_validate(test_case_dict)
         else:
             raise ValueError(f"Unknown test_case_type: {test_case_type}")
+
+        if verified_only:
+            test_case = filter_verified_test_rules(test_case)
 
         # Create evaluator based on type
         evaluators: dict[
             str,
-            ParseEvaluator | LayoutDetectionEvaluator,
+            ExtractEvaluator | ParseEvaluator | LayoutDetectionEvaluator,
         ] = {
-            "parse": ParseEvaluator(enable_teds=enable_teds, enable_rule_based=not skip_rules),
+            "extract": ExtractEvaluator(),
+            "parse": ParseEvaluator(
+                enable_teds=enable_teds,
+                enable_rule_based=not skip_rules,
+            ),
             "layout_detection": LayoutDetectionEvaluator(default_ontology=default_layout_ontology),
         }
 
@@ -255,6 +272,7 @@ class EvaluationRunner:
         enable_teds: bool = False,
         skip_rules: bool = False,
         layout_ontology: str = "basic",
+        verified_only: bool = False,
     ):
         """
         Initialize the evaluation runner.
@@ -265,6 +283,7 @@ class EvaluationRunner:
         :param enable_teds: Enable TEDS metric computation in parse evaluation
         :param skip_rules: Skip rule-based metric computation in parse evaluation
         :param layout_ontology: Default layout ontology when test case does not specify one
+        :param verified_only: Discard test rules explicitly marked verified=false
         """
         self.output_dir = Path(output_dir)
         self.test_cases_dir = Path(test_cases_dir) if test_cases_dir else None
@@ -272,6 +291,7 @@ class EvaluationRunner:
         self.enable_teds = enable_teds
         self.skip_rules = skip_rules
         self.layout_ontology = layout_ontology
+        self.verified_only = verified_only
 
         # Register default evaluators
         self._evaluators: dict[str, Any] = {}
@@ -290,6 +310,7 @@ class EvaluationRunner:
             "layout_detection",
             LayoutDetectionEvaluator(default_ontology=self.layout_ontology),
         )
+        self.register_evaluator("extract", ExtractEvaluator())
 
     def register_evaluator(self, product_type: str, evaluator: Any) -> None:
         """
@@ -489,7 +510,7 @@ class EvaluationRunner:
             test_cases = load_test_cases(
                 root_dir=self.test_cases_dir,
                 require_test_json=False,
-                product_type=product_type,
+                product_type=None if product_type == "parse" else product_type,
             )
             # Filter by group if specified
             if group:
@@ -499,6 +520,8 @@ class EvaluationRunner:
                     print(
                         f"📋 Filtered to {len(test_cases)} test cases in group '{group}' (from {original_count} total)"
                     )
+            if self.verified_only:
+                test_cases = [filter_verified_test_rules(tc) for tc in test_cases]
             test_cases_dict = {tc.test_id: tc for tc in test_cases}
             if verbose:
                 print(f"📋 Loaded {len(test_cases_dict)} test cases")
@@ -811,6 +834,7 @@ class EvaluationRunner:
                         str,
                         bool,
                         bool,
+                        bool,
                     ]
                 ] = []
                 for inf_result, tc, _eval_obj, mode in parallelizable_evaluations:
@@ -819,7 +843,9 @@ class EvaluationRunner:
                     tc_dict = tc.model_dump()
 
                     # Determine test case type
-                    if isinstance(tc, LayoutDetectionTestCase):
+                    if isinstance(tc, ExtractTestCase):
+                        tc_type = "extract"
+                    elif isinstance(tc, LayoutDetectionTestCase):
                         tc_type = "layout_detection"
                     elif isinstance(tc, ParseTestCase):
                         tc_type = "parse"
@@ -842,6 +868,7 @@ class EvaluationRunner:
                             self.layout_ontology,
                             self.enable_teds,
                             self.skip_rules,
+                            self.verified_only,
                         )
                     )
 
@@ -966,6 +993,9 @@ class EvaluationRunner:
         metric_values: dict[str, list[float]] = {}
         # Also collect counts from metadata (for rules, etc.)
         metric_counts: dict[str, list[tuple[int, int]]] = {}  # (passed, total) pairs
+        metric_prf_counts: dict[str, list[tuple[int, int, int]]] = {}  # (tp, fp, fn) triples
+        metric_score_sums: dict[str, list[tuple[float, float]]] = {}  # (score_sum, score_count)
+        weighted_metric_values: dict[str, list[tuple[float, float]]] = {}  # (weighted_value, weight)
         # Track scores where tables were predicted (for _predicted aggregates)
         # Applies to any metric with "tables_predicted" metadata (TEDS, GriTS, etc.)
         predicted_values: dict[str, list[float]] = {}
@@ -1002,6 +1032,40 @@ class EvaluationRunner:
                             metric_count_sums[metric.metric_name] = []
                         metric_count_sums[metric.metric_name].append(count)
 
+                if metric.metadata and {"tp", "fp", "fn"}.issubset(metric.metadata):
+                    tp = metric.metadata.get("tp")
+                    fp = metric.metadata.get("fp")
+                    fn = metric.metadata.get("fn")
+                    if isinstance(tp, int) and isinstance(fp, int) and isinstance(fn, int):
+                        if metric.metric_name not in metric_prf_counts:
+                            metric_prf_counts[metric.metric_name] = []
+                        metric_prf_counts[metric.metric_name].append((tp, fp, fn))
+
+                if metric.metadata and "score_sum" in metric.metadata and "score_count" in metric.metadata:
+                    score_sum = metric.metadata.get("score_sum")
+                    score_count = metric.metadata.get("score_count")
+                    if (
+                        isinstance(score_sum, (int, float))
+                        and not isinstance(score_sum, bool)
+                        and isinstance(score_count, (int, float))
+                        and not isinstance(score_count, bool)
+                        and score_count > 0
+                    ):
+                        metric_score_sums.setdefault(metric.metric_name, []).append(
+                            (float(score_sum), float(score_count))
+                        )
+
+                if metric.metadata and metric.metric_name == "parse_field_text_similarity":
+                    string_rule_count = metric.metadata.get("string_rule_count")
+                    if (
+                        isinstance(string_rule_count, (int, float))
+                        and not isinstance(string_rule_count, bool)
+                        and string_rule_count > 0
+                    ):
+                        weighted_metric_values.setdefault(metric.metric_name, []).append(
+                            (metric.value * float(string_rule_count), float(string_rule_count))
+                        )
+
         # Compute averages
         aggregate: dict[str, float] = {}
         for metric_name, values in metric_values.items():
@@ -1017,6 +1081,21 @@ class EvaluationRunner:
             if total_rules > 0:
                 aggregate[f"total_{metric_name}_passed"] = float(total_passed)
                 aggregate[f"total_{metric_name}_evaluated"] = float(total_rules)
+                aggregate[f"micro_{metric_name}"] = total_passed / total_rules
+
+        add_precision_recall_f1_aggregates(aggregate, metric_prf_counts)
+
+        for metric_name, score_pairs in metric_score_sums.items():
+            score_sum = sum(item[0] for item in score_pairs)
+            score_count = sum(item[1] for item in score_pairs)
+            if score_count > 0:
+                aggregate[f"micro_{metric_name}"] = score_sum / score_count
+
+        for metric_name, weighted_values in weighted_metric_values.items():
+            weighted_sum = sum(item[0] for item in weighted_values)
+            weight_sum = sum(item[1] for item in weighted_values)
+            if weight_sum > 0:
+                aggregate[f"micro_{metric_name}"] = weighted_sum / weight_sum
 
         # Add _predicted aggregates (only docs where tables were predicted)
         for key, values in predicted_values.items():

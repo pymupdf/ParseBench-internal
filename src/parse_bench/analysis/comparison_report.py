@@ -336,7 +336,8 @@ def _metric_color_class(val: float | None) -> str:
 
 
 def _css() -> str:
-    return """<style>
+    return (
+        """<style>
     :root {
         --bg: #f8f7f4;
         --fg: #1c1917;
@@ -1058,7 +1059,10 @@ def _css() -> str:
             font-size: 0.8rem;
         }
     }
-""" + TOOLTIP_CSS + """</style>"""
+"""
+        + TOOLTIP_CSS
+        + """</style>"""
+    )
 
 
 # ---------------------------------------------------------------------------

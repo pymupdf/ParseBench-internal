@@ -537,9 +537,7 @@ class AnthropicProvider(Provider):
         # Check file extension
         supported_extensions = {".pdf", ".png", ".jpg", ".jpeg"}
         if source_path.suffix.lower() not in supported_extensions:
-            raise ProviderPermanentError(
-                f"AnthropicProvider supports {supported_extensions}, got {source_path.suffix}"
-            )
+            raise ProviderPermanentError(f"AnthropicProvider supports {supported_extensions}, got {source_path.suffix}")
 
         started_at = datetime.now()
 

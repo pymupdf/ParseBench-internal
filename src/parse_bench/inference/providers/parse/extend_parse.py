@@ -584,9 +584,7 @@ def _build_layout_pages(
                 )
             )
 
-            section_content = (
-                f"<page_number>{content}</page_number>" if block_type == "page_number" else content
-            )
+            section_content = f"<page_number>{content}</page_number>" if block_type == "page_number" else content
             if canonical_label == "Page-header" and content:
                 pages_headers[page_num].append(section_content)
             elif canonical_label == "Page-footer" and content:

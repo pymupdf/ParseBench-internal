@@ -16,6 +16,7 @@ dependencies = [
     "numpy>=1.24.0",
     "pandas>=2.0.0",
     "pydantic>=2.0.0",
+    "python-dateutil>=2.9.0",
     "python-dotenv>=1.0.0",
     "python-Levenshtein>=0.25.0",
     "rapidfuzz>=3.0.0",
@@ -41,6 +42,7 @@ runners = [
     "extend-ai>=1.8.0",
     "google-genai>=1.0.0",
     "google-cloud-documentai>=2.20.0",
+    "httpx>=0.28.0",
     "landingai-ade>=1.4.0",
     "llama-cloud>=1.4.1",
     "openai>=1.0.0",
@@ -114,6 +116,10 @@ module = [
     "textractor",
     "textractor.*",
     "boto3",
+    "autoevals.number",
+    "autoevals.string",
+    "dateutil",
+    "dateutil.*",
 ]
 ignore_missing_imports = true
 

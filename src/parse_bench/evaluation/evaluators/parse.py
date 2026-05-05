@@ -5,6 +5,12 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
 from parse_bench.evaluation.evaluators.base import BaseEvaluator
+from parse_bench.evaluation.metrics.field_grounding.parse_adapter import (
+    compute_parse_field_grounding_metrics,
+)
+from parse_bench.evaluation.metrics.field_grounding.rule_filters import (
+    filter_extract_field_rules,
+)
 from parse_bench.evaluation.metrics.parse.grits_metric import (
     GriTSMetric,
 )
@@ -47,7 +53,7 @@ from parse_bench.schemas.evaluation import EvaluationResult, MetricValue
 from parse_bench.schemas.parse_output import ParseOutput
 from parse_bench.schemas.pipeline_io import InferenceResult
 from parse_bench.schemas.product import ProductType
-from parse_bench.test_cases.schema import ParseTestCase, TestCase
+from parse_bench.test_cases.schema import ExtractTestCase, ParseTestCase, TestCase
 
 
 def _has_html_tables(content: str) -> bool:
@@ -56,6 +62,10 @@ def _has_html_tables(content: str) -> bool:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _has_extract_field_bboxes(test_case: ExtractTestCase) -> bool:
+    return any(rule.bboxes for rule in test_case.get_extract_field_rules())
 
 
 # ---------------------------------------------------------------------------
@@ -161,13 +171,17 @@ class ParseEvaluator(BaseEvaluator):
         Requires:
         - ProductType.PARSE
         - inference_result.output is a ParseOutput instance
-        - test_case is a ParseTestCase with either test_rules or expected_markdown
+        - test_case is a ParseTestCase with either test_rules or expected_markdown,
+          or an ExtractTestCase with extract_field bbox rules.
         """
         if inference_result.product_type != ProductType.PARSE:
             return False
 
         if not isinstance(inference_result.output, ParseOutput):
             return False
+
+        if isinstance(test_case, ExtractTestCase):
+            return _has_extract_field_bboxes(test_case)
 
         if not isinstance(test_case, ParseTestCase):
             return False
@@ -197,8 +211,11 @@ class ParseEvaluator(BaseEvaluator):
         if not isinstance(inference_result.output, ParseOutput):
             raise ValueError("Inference result output is not ParseOutput")
 
+        if isinstance(test_case, ExtractTestCase):
+            return self._evaluate_extract_field_grounding(inference_result, test_case)
+
         if not isinstance(test_case, ParseTestCase):
-            raise ValueError("Test case must be ParseTestCase for PARSE evaluation")
+            raise ValueError("Test case must be ParseTestCase or ExtractTestCase for PARSE evaluation")
 
         metrics: list[MetricValue] = []
 
@@ -708,6 +725,36 @@ class ParseEvaluator(BaseEvaluator):
 
         stats = build_operational_stats(inference_result)
 
+        return EvaluationResult(
+            test_id=test_case.test_id,
+            example_id=inference_result.request.example_id,
+            pipeline_name=inference_result.pipeline_name,
+            product_type=inference_result.product_type.value,
+            success=True,
+            metrics=metrics,
+            stats=stats,
+        )
+
+    def _evaluate_extract_field_grounding(
+        self,
+        inference_result: InferenceResult,
+        test_case: ExtractTestCase,
+    ) -> EvaluationResult:
+        """Evaluate parse output against extract_field rules, emitting parse_field_* metrics."""
+        if not isinstance(inference_result.output, ParseOutput):
+            raise ValueError("Inference result output is not ParseOutput")
+
+        all_extract_field_rules = test_case.get_extract_field_rules()
+        extract_field_rules = filter_extract_field_rules(
+            all_extract_field_rules,
+            require_bboxes=True,
+        )
+        metrics = compute_parse_field_grounding_metrics(
+            inference_result=inference_result,
+            field_rules=extract_field_rules,
+            data_schema=test_case.data_schema,
+        )
+        stats = build_operational_stats(inference_result)
         return EvaluationResult(
             test_id=test_case.test_id,
             example_id=inference_result.request.example_id,

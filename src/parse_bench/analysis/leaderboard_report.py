@@ -11,7 +11,7 @@ warm editorial palette) as the other reports.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -43,9 +43,7 @@ def _load_pipeline_data(pipeline_dir: Path) -> dict[str, Any] | None:
         if not report_path.exists():
             continue
         try:
-            summary = EvaluationSummary.model_validate(
-                json.loads(report_path.read_text(encoding="utf-8"))
-            )
+            summary = EvaluationSummary.model_validate(json.loads(report_path.read_text(encoding="utf-8")))
         except Exception:
             continue
 
@@ -54,7 +52,7 @@ def _load_pipeline_data(pipeline_dir: Path) -> dict[str, Any] | None:
         for key in sorted(summary.aggregate_metrics.keys()):
             if not key.startswith("avg_"):
                 continue
-            metric_name = key[len("avg_"):]
+            metric_name = key[len("avg_") :]
             if "_predicted" in metric_name or "_judge" in metric_name:
                 continue
             metrics_dict[metric_name] = summary.aggregate_metrics[key]
@@ -103,10 +101,7 @@ def generate_leaderboard_report(
     if pipeline_names:
         dirs = [output_dir / name for name in pipeline_names]
     else:
-        dirs = sorted(
-            d for d in output_dir.iterdir()
-            if d.is_dir() and (d / "_metadata.json").exists()
-        )
+        dirs = sorted(d for d in output_dir.iterdir() if d.is_dir() and (d / "_metadata.json").exists())
 
     pipelines: list[dict[str, Any]] = []
     for d in dirs:
@@ -158,11 +153,14 @@ def generate_leaderboard_report(
     for cat_name in all_categories:
         default = _DEFAULT_METRICS.get(cat_name, "rule_pass_rate")
         if default not in category_metrics.get(cat_name, []):
-            default = "rule_pass_rate" if "rule_pass_rate" in category_metrics.get(cat_name, []) else (category_metrics[cat_name][0] if category_metrics[cat_name] else "")
+            if "rule_pass_rate" in category_metrics.get(cat_name, []):
+                default = "rule_pass_rate"
+            else:
+                default = category_metrics[cat_name][0] if category_metrics[cat_name] else ""
         default_metrics[cat_name] = default
 
     data_blob = {
-        "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "generatedAt": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "defaultMetrics": default_metrics,
         "pipelines": [
             {
@@ -214,7 +212,14 @@ def generate_leaderboard_report(
 # HTML template
 # ---------------------------------------------------------------------------
 
-_HTML_HEAD = """\
+_FONT_URL = (
+    "https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@"
+    "0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400"
+    "&family=Plus+Jakarta+Sans:wght@400;500;600;700"
+    "&family=JetBrains+Mono:wght@400;500&display=swap"
+)
+
+_HTML_HEAD = f"""\
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -223,7 +228,7 @@ _HTML_HEAD = """\
 <title>Benchmark Leaderboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="{_FONT_URL}" rel="stylesheet">
 <style>
 """
 
@@ -706,7 +711,8 @@ _JS = """\
     var cls = 'score-wrap' + (isBest ? ' is-best' : '');
     var h = '<div class="' + cls + '">';
     h += '<span class="score-number color-' + c + '">' + pct(pctVal) + '</span>';
-    h += '<div class="score-bar-track"><div class="score-bar-fill bar-' + c + '" style="width:' + Math.min(pctVal, 100).toFixed(1) + '%"></div></div>';
+    h += '<div class="score-bar-track"><div class="score-bar-fill bar-' + c
+      + '" style="width:' + Math.min(pctVal, 100).toFixed(1) + '%"></div></div>';
     if (isBest) h += '<span class="score-badge">Best</span>';
     h += '</div>';
     return h;
@@ -721,7 +727,8 @@ _JS = """\
       var p = DATA.pipelines[i];
       var isWinner = winners.indexOf(p.name) >= 0;
       var tierLabel = getTierLabel(p);
-      html += '<th data-col="' + i + '" data-url="' + esc(p.dashboardUrl) + '"><div class="pipeline-header' + (isWinner ? ' is-winner' : '') + '">';
+      html += '<th data-col="' + i + '" data-url="' + esc(p.dashboardUrl)
+        + '"><div class="pipeline-header' + (isWinner ? ' is-winner' : '') + '">';
       if (isWinner) html += '<span class="pipeline-crown">\\ud83d\\udc51</span>';
       html += '<span class="pipeline-name">' + esc(p.displayName) + '</span>';
       var sub = p.provider || '';
@@ -760,7 +767,8 @@ _JS = """\
         var pName = DATA.pipelines[pi].name;
         var v = getScore(cat, pName);
         var isBest = bestPipelines.indexOf(pName) >= 0;
-        html += '<td data-col="' + pi + '" data-url="' + esc(DATA.pipelines[pi].dashboardUrl) + '">' + buildScoreCell(v, isBest, false) + '</td>';
+        html += '<td data-col="' + pi + '" data-url="' + esc(DATA.pipelines[pi].dashboardUrl)
+          + '">' + buildScoreCell(v, isBest, false) + '</td>';
       }
       html += '</tr>';
     }
@@ -769,12 +777,14 @@ _JS = """\
     var overallWinners = getOverallWinners();
 
     html += '<tr class="overall-row">';
-    html += '<td><span class="overall-label">Overall<span class="overall-sublabel">Average across categories</span></span></td>';
+    html += '<td><span class="overall-label">Overall'
+      + '<span class="overall-sublabel">Average across categories</span></span></td>';
     for (var opi = 0; opi < DATA.pipelines.length; opi++) {
       var opName = DATA.pipelines[opi].name;
       var ov = getOverallScore(opName);
       var oIsBest = overallWinners.indexOf(opName) >= 0;
-      html += '<td data-col="' + opi + '" data-url="' + esc(DATA.pipelines[opi].dashboardUrl) + '">' + buildScoreCell(ov, oIsBest, true) + '</td>';
+      html += '<td data-col="' + opi + '" data-url="' + esc(DATA.pipelines[opi].dashboardUrl)
+        + '">' + buildScoreCell(ov, oIsBest, true) + '</td>';
     }
     html += '</tr>';
 

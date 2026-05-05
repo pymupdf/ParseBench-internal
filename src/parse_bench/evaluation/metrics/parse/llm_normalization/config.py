@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
-from enum import Enum
+from enum import StrEnum
 
 
-class NormalizationMode(str, Enum):
+class NormalizationMode(StrEnum):
     """LLM normalization mode, controlled by LLAMACLOUD_BENCH_LLM_NORMALIZATION env var."""
 
     OFF = "off"
