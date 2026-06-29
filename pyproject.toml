@@ -56,6 +56,7 @@ runners = [
     "reductoai>=0.13.0",
     "unstructured-client>=0.26.0",
     "pymupdf4llm==1.28.0",
+    "rapidocr-onnxruntime==1.2.3",
 ]
 dev = [
     "pytest>=8.0.0",

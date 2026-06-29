@@ -492,6 +492,42 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="pymupdf4llm_markdown_tesseract",
+            provider_name="pymupdf4llm",
+            product_type=ProductType.PARSE,
+            config={"ocr_backend": "tesseract"},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="pymupdf4llm_markdown_rapidocr",
+            provider_name="pymupdf4llm",
+            product_type=ProductType.PARSE,
+            config={"ocr_backend": "rapidocr"},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="pymupdf4llm_markdown_no_ocr",
+            provider_name="pymupdf4llm",
+            product_type=ProductType.PARSE,
+            config={"use_ocr": False},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
+            pipeline_name="pymupdf4llm_markdown_150dpi",
+            provider_name="pymupdf4llm",
+            product_type=ProductType.PARSE,
+            config={"ocr_dpi": 150},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="markitdown",
             provider_name="markitdown",
             product_type=ProductType.PARSE,
