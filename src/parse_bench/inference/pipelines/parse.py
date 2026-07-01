@@ -510,6 +510,15 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="pymupdf4llm_markdown_rapidocr_150dpi",
+            provider_name="pymupdf4llm",
+            product_type=ProductType.PARSE,
+            config={"ocr_backend": "rapidocr", "ocr_dpi": 150},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="pymupdf4llm_markdown_no_ocr",
             provider_name="pymupdf4llm",
             product_type=ProductType.PARSE,

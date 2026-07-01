@@ -1,11 +1,15 @@
 """Provider for PyMuPDF4LLM PARSE."""
 
+import html
 import importlib
 import logging
 import math
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from markdown_it import MarkdownIt
 
 from parse_bench.inference.providers.base import (
     Provider,
@@ -29,6 +33,253 @@ from parse_bench.schemas.pipeline_io import (
 from parse_bench.schemas.product import ProductType
 
 logger = logging.getLogger(__name__)
+
+# A CommonMark parser with the GFM table rule enabled. Reused across calls.
+_MD = MarkdownIt("commonmark").enable("table")
+
+
+def _is_pipe_table_line(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2
+
+
+def _is_separator_row(line: str) -> bool:
+    stripped = line.strip().strip("|")
+    if not stripped:
+        return False
+    cells = [cell.strip() for cell in stripped.split("|")]
+    return all(cell and re.fullmatch(r":?-{3,}:?", cell) for cell in cells)
+
+
+def _split_pipe_row(line: str) -> list[str]:
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    return [cell.strip() for cell in stripped.split("|")]
+
+
+def _render_cell_inline(cell: str) -> str:
+    # Malformed OCR pipe splits can break a bold span across cells:
+    # ``**EFT||Tenure**`` becomes ``**EFT`` and ``Tenure**``.
+    if cell.startswith("**") and not cell.endswith("**"):
+        cell = cell[2:]
+    if cell.endswith("**") and not cell.startswith("**"):
+        cell = cell[:-2]
+    rendered = _MD.renderInline(cell).strip()
+    return rendered if rendered else html.escape(cell)
+
+
+def _render_html_table(rows: list[list[str]], *, header_rows: int = 1) -> str:
+    if not rows:
+        return ""
+
+    max_cols = max(len(row) for row in rows)
+    normalized_rows = [row + [""] * (max_cols - len(row)) for row in rows]
+    parts = ["<table>"]
+
+    if header_rows > 0:
+        parts.append("<thead>")
+        for row in normalized_rows[:header_rows]:
+            cells = "".join(f"<th>{_render_cell_inline(cell)}</th>" for cell in row)
+            parts.append(f"<tr>{cells}</tr>")
+        parts.append("</thead>")
+
+    body_rows = normalized_rows[header_rows:]
+    if body_rows:
+        parts.append("<tbody>")
+        for row in body_rows:
+            cells = "".join(f"<td>{_render_cell_inline(cell)}</td>" for cell in row)
+            parts.append(f"<tr>{cells}</tr>")
+        parts.append("</tbody>")
+
+    parts.append("</table>")
+    return "\n".join(parts)
+
+
+def _render_forgiving_pipe_table(block: list[str]) -> str | None:
+    if len(block) < 2:
+        return None
+
+    separator_idx = next((idx for idx, line in enumerate(block) if _is_separator_row(line)), None)
+    if separator_idx is None:
+        return None
+
+    rows = [_split_pipe_row(line) for idx, line in enumerate(block) if idx != separator_idx]
+    rows = [row for row in rows if any(cell.strip() for cell in row)]
+    if len(rows) < 2:
+        return None
+
+    max_cols = max(len(row) for row in rows)
+    if max_cols < 2:
+        return None
+
+    return _render_html_table(rows, header_rows=max(separator_idx, 1))
+
+
+def _render_strict_pipe_tables(text: str) -> str:
+    tokens = _MD.parse(text)
+    lines = text.split("\n")
+
+    # Collect (start_line, end_line_exclusive, rendered_html) for each table.
+    spans: list[tuple[int, int, str]] = []
+    i = 0
+    n = len(tokens)
+    while i < n:
+        tok = tokens[i]
+        if tok.type == "table_open" and tok.map:
+            start, end = tok.map
+            j = i
+            while j < n and tokens[j].type != "table_close":
+                j += 1
+            html_text = _MD.renderer.render(tokens[i : j + 1], _MD.options, {})
+            spans.append((start, end, html_text.rstrip("\n")))
+            i = j + 1
+        else:
+            i += 1
+
+    for start, end, html_text in sorted(spans, reverse=True):
+        lines[start:end] = [html_text]
+    return "\n".join(lines)
+
+
+def _render_forgiving_pipe_tables(text: str) -> str:
+    lines = text.split("\n")
+    result: list[str] = []
+    i = 0
+    while i < len(lines):
+        if not _is_pipe_table_line(lines[i]):
+            result.append(lines[i])
+            i += 1
+            continue
+
+        start = i
+        while i < len(lines) and _is_pipe_table_line(lines[i]):
+            i += 1
+        block = lines[start:i]
+
+        if any("<table" in line.lower() for line in block):
+            result.extend(block)
+            continue
+
+        rendered = _render_forgiving_pipe_table(block)
+        if rendered is None:
+            result.extend(block)
+        else:
+            result.append(rendered)
+
+    return "\n".join(result)
+
+
+def _table_from_time_rows(lines: list[str], start: int) -> tuple[str, int] | None:
+    segments = [segment.strip() for segment in re.split(r"<br\s*/?>", lines[start], flags=re.IGNORECASE)]
+    title = segments[0].strip()
+    if " to " not in title.lower() or "|" in title or "<table" in title.lower():
+        return None
+
+    rows: list[list[str]] = []
+    has_inline_rows = len(segments) > 1
+    for segment in segments[1:]:
+        cells = re.findall(r"\b\d{1,2}:\d{2}\b", segment)
+        if len(cells) < 2:
+            break
+        rows.append(cells)
+
+    i = start + 1
+    while not has_inline_rows and i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            if rows:
+                break
+            i += 1
+            continue
+        if "|" in line or "<table" in line.lower():
+            break
+        cells = re.findall(r"\b\d{1,2}:\d{2}\b", line)
+        if len(cells) < 2:
+            break
+        rows.append(cells)
+        i += 1
+
+    if len(rows) < 3:
+        return None
+
+    max_cols = max(len(row) for row in rows)
+    if max_cols < 2:
+        return None
+    title_row = [title, *[""] * (max_cols - 1)]
+    column_row = [f"Column {idx}" for idx in range(1, max_cols + 1)]
+    return _render_html_table([title_row, column_row, *rows], header_rows=2), i
+
+
+def _table_from_rate_line(line: str) -> str | None:
+    stripped = line.strip()
+    match = re.match(r"^(?:#+\s*)?\*\*Rate\*\*(?:\s|:|$)(.*)$", stripped)
+    if match is None:
+        return None
+    remainder = match.group(1).strip(" :")
+    if not remainder:
+        return None
+    amount_match = re.search(r"(\$[\d,]+(?:\.\d+)?)\s*$", remainder)
+    if amount_match is None:
+        return None
+    description = remainder[: amount_match.start()].strip(" :-")
+    amount = amount_match.group(1)
+    if not description:
+        return None
+    return _render_html_table([["Rate"], [amount]], header_rows=1)
+
+
+def recover_simple_tables(text: str) -> str:
+    """Recover narrow PyMuPDF table misses that contain no usable pipe table."""
+    if "<table" in text.lower():
+        return text
+
+    lines = text.split("\n")
+    result: list[str] = []
+    i = 0
+    while i < len(lines):
+        rate_table = _table_from_rate_line(lines[i])
+        if rate_table is not None:
+            result.append(lines[i])
+            result.append("")
+            result.append(rate_table)
+            i += 1
+            continue
+
+        time_table = _table_from_time_rows(lines, i)
+        if time_table is not None:
+            table_html, next_i = time_table
+            result.extend(lines[i:next_i])
+            result.append("")
+            result.append(table_html)
+            i = next_i
+            continue
+
+        result.append(lines[i])
+        i += 1
+
+    return "\n".join(result)
+
+
+def convert_pipe_tables_to_html(text: str) -> str:
+    """Replace GFM pipe tables in *text* with equivalent HTML ``<table>`` blocks.
+
+    Uses ``markdown-it-py`` to locate every GFM table and render it to HTML. Each
+    table's source-line span (the ``table_open`` token's ``.map``) is replaced
+    in-place with the rendered ``<table>`` markup; everything else is preserved
+    byte-for-byte. Replacements are applied bottom-up so earlier line indices
+    stay valid.
+
+    Well-formed GFM tables are converted first. Remaining obvious PyMuPDF table
+    blocks are converted with a forgiving row splitter because OCR sometimes
+    emits extra literal pipes inside cell text (for example ``N||00-06M``),
+    which makes the table invisible to the benchmark's HTML-table metrics.
+    """
+    converted = _render_strict_pipe_tables(text) if "|" in text else text
+    converted = _render_forgiving_pipe_tables(converted) if "|" in converted else converted
+    return recover_simple_tables(converted)
 
 
 # PyMuPDF Layout 1.28 emits exactly the DocLayNet/Core11 classes. Keep the
@@ -208,37 +459,7 @@ class PyMuPDF4LLMProvider(Provider):
 
     @staticmethod
     def _convert_md_tables_to_html(content: str) -> str:
-        import markdown2
-
-        lines = content.split("\n")
-        result_parts: list[str] = []
-        table_lines: list[str] = []
-        in_table = False
-
-        def _flush() -> None:
-            nonlocal table_lines
-            if len(table_lines) >= 2:
-                html = markdown2.markdown("\n".join(table_lines), extras=["tables"]).strip()
-                if "<table>" in html.lower():
-                    result_parts.append(html)
-                else:
-                    result_parts.extend(table_lines)
-            else:
-                result_parts.extend(table_lines)
-            table_lines = []
-
-        for line in lines:
-            if "|" in line and line.strip().startswith("|"):
-                in_table = True
-                table_lines.append(line)
-            else:
-                if in_table:
-                    _flush()
-                    in_table = False
-                result_parts.append(line)
-        if in_table:
-            _flush()
-        return "\n".join(result_parts)
+        return convert_pipe_tables_to_html(content)
 
     @staticmethod
     def _coerce_bbox(

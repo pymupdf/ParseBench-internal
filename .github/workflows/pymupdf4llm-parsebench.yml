@@ -1,11 +1,6 @@
 name: PyMuPDF4LLM ParseBench
 
 on:
-  push:
-    branches:
-      - pymupdf4llm-ocr-layout
-    paths:
-      - ".github/workflows/pymupdf4llm-parsebench.yml"
   workflow_dispatch:
     inputs:
       benchmark_ref:
