@@ -336,13 +336,52 @@ jobs:
             exit 0
           fi
 
+          bucket_uri="gs://${BUCKET}"
+          output_uri="${bucket_uri}/${DESTINATION}/parsebench-output/"
+          public_url="https://storage.googleapis.com/${BUCKET}/${DESTINATION}/parsebench-output/"
+          leaderboard_url="${public_url}_leaderboard.html"
+          public_bucket_url="https://storage.googleapis.com/${BUCKET}"
+          public_listing_url="https://storage.googleapis.com/${BUCKET}?prefix=${DESTINATION}/parsebench-output/"
+          bucket_console_url="https://console.cloud.google.com/storage/browser/${BUCKET}?project=${GCP_PROJECT_ID}"
+          output_console_url="https://console.cloud.google.com/storage/browser/${BUCKET}/${DESTINATION}/parsebench-output?project=${GCP_PROJECT_ID}"
+
+          gcloud storage buckets add-iam-policy-binding "${bucket_uri}" \
+            --member=allUsers \
+            --role=roles/storage.objectViewer
+
           gcloud storage cp --recursive "${OUTPUT_DIR}" "gs://${BUCKET}/${DESTINATION}/"
 
-          public_url="https://storage.googleapis.com/${BUCKET}/${DESTINATION}/parsebench-output/"
+          leaderboard_public_status="not generated for this run"
+          leaderboard_public_failed=0
+          if [[ -f "${OUTPUT_DIR}/_leaderboard.html" ]]; then
+            if curl --fail --silent --show-error --head --retry 5 --retry-delay 5 --retry-all-errors "${leaderboard_url}" >/dev/null; then
+              leaderboard_public_status="verified publicly reachable"
+            else
+              leaderboard_public_status="FAILED public reachability check"
+              leaderboard_public_failed=1
+            fi
+          fi
+
           {
-            echo "Uploaded outputs to gs://${BUCKET}/${DESTINATION}/parsebench-output/"
-            echo "Public URL: ${public_url}"
+            echo "## ParseBench output upload"
+            echo
+            echo "- GCS path: \`${output_uri}\`"
+            if [[ -f "${OUTPUT_DIR}/_leaderboard.html" ]]; then
+              echo "- Public leaderboard HTML: [download _leaderboard.html](${leaderboard_url})"
+            else
+              echo "- Public leaderboard HTML: not generated for this run"
+            fi
+            echo "- Public access check: ${leaderboard_public_status}"
+            echo "- Public bucket listing: [open ${BUCKET}](${public_bucket_url})"
+            echo "- Public object listing: [open uploaded output prefix](${public_listing_url})"
+            echo "- Google Cloud bucket: [open ${BUCKET}](${bucket_console_url})"
+            echo "- Google Cloud output browser: [open uploaded output prefix](${output_console_url})"
           } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [[ "${leaderboard_public_failed}" -ne 0 ]]; then
+            echo "Leaderboard URL is not publicly reachable: ${leaderboard_url}" >&2
+            exit 1
+          fi
 
       - name: Upload GitHub artifact
         if: ${{ always() && (success() || github.event_name == 'push' || inputs.upload_on_failure) }}
