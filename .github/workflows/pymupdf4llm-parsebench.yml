@@ -51,6 +51,7 @@ env:
   PIPELINE: pymupdf4llm_markdown_150dpi
   PYTHON_VERSION: "3.12"
   GCP_PROJECT_ID: pypi-download-analysis-457820
+  DATASET_CACHE_VERSION: v1
 
 jobs:
   benchmark:
@@ -63,6 +64,43 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.benchmark_ref || github.ref }}
+
+      - name: Resolve run configuration
+        id: config
+        env:
+          BENCHMARK_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_ref || '' }}
+          GROUP: ${{ github.event_name == 'workflow_dispatch' && inputs.group || 'all' }}
+          GCS_PREFIX: ${{ github.event_name == 'workflow_dispatch' && inputs.gcs_prefix || 'parsebench/pymupdf4llm_markdown_150dpi/smoke' }}
+          RUN_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_scope || 'test' }}
+        run: |
+          set -euo pipefail
+
+          output_dir="${RUNNER_TEMP}/parsebench-output"
+          data_dir="data"
+          if [[ "${RUN_SCOPE}" == "test" ]]; then
+            data_dir="data/test"
+          fi
+
+          ref_label="${BENCHMARK_REF:-${GITHUB_REF_NAME}}"
+          checked_out_sha="$(git rev-parse HEAD)"
+          safe_ref="$(printf '%s' "${ref_label}" | tr '/:@ ' '----' | tr -cd 'A-Za-z0-9._-')"
+          clean_prefix="${GCS_PREFIX#/}"
+          clean_prefix="${clean_prefix%/}"
+          destination="${clean_prefix}/${safe_ref}/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}"
+
+          mkdir -p "${output_dir}"
+
+          {
+            echo "benchmark_ref=${BENCHMARK_REF}"
+            echo "checked_out_ref=${ref_label}"
+            echo "checked_out_sha=${checked_out_sha}"
+            echo "data_dir=${data_dir}"
+            echo "destination=${destination}"
+            echo "gcs_prefix=${GCS_PREFIX}"
+            echo "group=${GROUP}"
+            echo "output_dir=${output_dir}"
+            echo "run_scope=${RUN_SCOPE}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -79,6 +117,16 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --extra runners
+
+      - name: Restore ParseBench dataset cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data
+            ~/.cache/huggingface
+          key: parsebench-data-${{ runner.os }}-${{ env.DATASET_CACHE_VERSION }}-${{ steps.config.outputs.run_scope }}
+          restore-keys: |
+            parsebench-data-${{ runner.os }}-${{ env.DATASET_CACHE_VERSION }}-${{ steps.config.outputs.run_scope }}-
 
       - name: Verify OCR dependencies
         run: |
@@ -104,37 +152,36 @@ jobs:
           print("Tesseract language data: eng")
           PY
 
-      - name: Prepare run metadata
-        id: metadata
+      - name: Download ParseBench dataset
         env:
-          BENCHMARK_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_ref || '' }}
-          GROUP: ${{ github.event_name == 'workflow_dispatch' && inputs.group || 'all' }}
-          GCS_PREFIX: ${{ github.event_name == 'workflow_dispatch' && inputs.gcs_prefix || 'parsebench/pymupdf4llm_markdown_150dpi/smoke' }}
-          RUN_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_scope || 'test' }}
+          RUN_SCOPE: ${{ steps.config.outputs.run_scope }}
         run: |
           set -euo pipefail
 
-          output_dir="${RUNNER_TEMP}/parsebench-output"
-          mkdir -p "${output_dir}"
+          if [[ "${RUN_SCOPE}" == "test" ]]; then
+            uv run parse-bench download --test
+          else
+            uv run parse-bench download
+          fi
 
-          ref_label="${BENCHMARK_REF:-${GITHUB_REF_NAME}}"
-          checked_out_sha="$(git rev-parse HEAD)"
-          safe_ref="$(printf '%s' "${ref_label}" | tr '/:@ ' '----' | tr -cd 'A-Za-z0-9._-')"
-          clean_prefix="${GCS_PREFIX#/}"
-          clean_prefix="${clean_prefix%/}"
-          destination="${clean_prefix}/${safe_ref}/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}"
+      - name: Write run metadata
+        env:
+          BENCHMARK_REF: ${{ steps.config.outputs.benchmark_ref }}
+          CHECKED_OUT_REF: ${{ steps.config.outputs.checked_out_ref }}
+          CHECKED_OUT_SHA: ${{ steps.config.outputs.checked_out_sha }}
+          DESTINATION: ${{ steps.config.outputs.destination }}
+          GROUP: ${{ steps.config.outputs.group }}
+          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
+          RUN_SCOPE: ${{ steps.config.outputs.run_scope }}
+        run: |
+          set -euo pipefail
 
-          {
-            echo "output_dir=${output_dir}"
-            echo "destination=${destination}"
-          } >> "${GITHUB_OUTPUT}"
-
-          cat > "${output_dir}/_github_run.json" <<JSON
+          cat > "${OUTPUT_DIR}/_github_run.json" <<JSON
           {
             "pipeline": "${PIPELINE}",
             "benchmark_ref_input": "${BENCHMARK_REF}",
-            "checked_out_ref": "${ref_label}",
-            "checked_out_sha": "${checked_out_sha}",
+            "checked_out_ref": "${CHECKED_OUT_REF}",
+            "checked_out_sha": "${CHECKED_OUT_SHA}",
             "github_ref": "${GITHUB_REF}",
             "github_sha": "${GITHUB_SHA}",
             "github_repository": "${GITHUB_REPOSITORY}",
@@ -145,34 +192,124 @@ jobs:
             "group": "${GROUP}",
             "max_concurrent": 1,
             "gcs_bucket": "${{ vars.PARSEBENCH_GCS_BUCKET }}",
-            "gcs_destination": "${destination}"
+            "gcs_destination": "${DESTINATION}"
           }
           JSON
 
-      - name: Run PyMuPDF4LLM 150 DPI benchmark
+      - name: Run PyMuPDF4LLM 150 DPI inference
         env:
-          GROUP: ${{ github.event_name == 'workflow_dispatch' && inputs.group || 'all' }}
-          RUN_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_scope || 'test' }}
-          OUTPUT_DIR: ${{ steps.metadata.outputs.output_dir }}
+          DATA_DIR: ${{ steps.config.outputs.data_dir }}
+          GROUP: ${{ steps.config.outputs.group }}
+          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
         run: |
           set -euo pipefail
 
           args=(
+            inference
             run
             "${PIPELINE}"
+            --input_dir "${DATA_DIR}"
             --output_dir "${OUTPUT_DIR}"
             --max_concurrent 1
           )
-
-          if [[ "${RUN_SCOPE}" == "test" ]]; then
-            args+=(--test)
-          fi
 
           if [[ "${GROUP}" != "all" ]]; then
             args+=(--group "${GROUP}")
           fi
 
           uv run parse-bench "${args[@]}"
+
+      - name: Run ParseBench evaluation
+        env:
+          DATA_DIR: ${{ steps.config.outputs.data_dir }}
+          GROUP: ${{ steps.config.outputs.group }}
+          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
+        run: |
+          set -euo pipefail
+
+          pipeline_output_dir="${OUTPUT_DIR}/${PIPELINE}"
+
+          if [[ "${GROUP}" != "all" ]]; then
+            uv run parse-bench evaluation run \
+              --output_dir "${pipeline_output_dir}" \
+              --test_cases_dir "${DATA_DIR}" \
+              --group "${GROUP}" \
+              --report_dir "${pipeline_output_dir}" \
+              --export_csv=False \
+              --export_rule_csv=False \
+              --export_markdown=False \
+              --export_html=False
+            exit 0
+          fi
+
+          mapfile -t inference_groups < <(
+            find "${pipeline_output_dir}" -mindepth 2 -maxdepth 2 -name '*.result.json' -printf '%h\n' \
+              | xargs -r -n1 basename \
+              | sort -u
+          )
+
+          if [[ "${#inference_groups[@]}" -eq 0 ]]; then
+            echo "No inference result groups found in ${pipeline_output_dir}" >&2
+            exit 1
+          fi
+
+          eval_groups=()
+          for group in "${inference_groups[@]}"; do
+            if [[ "${group}" == "text" ]]; then
+              eval_groups+=(text_content text_formatting)
+            else
+              eval_groups+=("${group}")
+            fi
+          done
+          mapfile -t eval_groups < <(printf '%s\n' "${eval_groups[@]}" | sort -u)
+
+          printf '%s\n' "${eval_groups[@]}" > "${pipeline_output_dir}/_eval_groups.txt"
+
+          for group in "${eval_groups[@]}"; do
+            uv run parse-bench evaluation run \
+              --output_dir "${pipeline_output_dir}" \
+              --test_cases_dir "${DATA_DIR}" \
+              --group "${group}" \
+              --report_dir "${pipeline_output_dir}/${group}" \
+              --export_csv=False \
+              --export_rule_csv=False \
+              --export_markdown=False \
+              --export_html=False
+          done
+
+      - name: Generate ParseBench reports
+        env:
+          DATA_DIR: ${{ steps.config.outputs.data_dir }}
+          GROUP: ${{ steps.config.outputs.group }}
+          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
+        run: |
+          set -euo pipefail
+
+          pipeline_output_dir="${OUTPUT_DIR}/${PIPELINE}"
+
+          if [[ "${GROUP}" != "all" ]]; then
+            uv run parse-bench evaluation regenerate_report \
+              --evaluation_dir "${pipeline_output_dir}" \
+              --test_cases_dir "${DATA_DIR}" \
+              --output_dir "${pipeline_output_dir}" \
+              --report_dir "${pipeline_output_dir}"
+          else
+            while IFS= read -r group; do
+              [[ -n "${group}" ]] || continue
+              uv run parse-bench evaluation regenerate_report \
+                --evaluation_dir "${pipeline_output_dir}/${group}" \
+                --test_cases_dir "${DATA_DIR}" \
+                --output_dir "${pipeline_output_dir}" \
+                --report_dir "${pipeline_output_dir}/${group}"
+            done < "${pipeline_output_dir}/_eval_groups.txt"
+
+            uv run parse-bench analysis generate_dashboard \
+              --evaluation_dir "${pipeline_output_dir}" \
+              --pipeline_name "${PIPELINE}"
+
+            uv run parse-bench analysis generate_leaderboard \
+              --output_dir "${OUTPUT_DIR}"
+          fi
 
       - name: Authenticate to Google Cloud
         if: ${{ always() && (success() || github.event_name == 'push' || inputs.upload_on_failure) }}
@@ -189,8 +326,8 @@ jobs:
         if: ${{ always() && (success() || github.event_name == 'push' || inputs.upload_on_failure) }}
         env:
           BUCKET: ${{ vars.PARSEBENCH_GCS_BUCKET }}
-          DESTINATION: ${{ steps.metadata.outputs.destination }}
-          OUTPUT_DIR: ${{ steps.metadata.outputs.output_dir }}
+          DESTINATION: ${{ steps.config.outputs.destination }}
+          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
         run: |
           set -euo pipefail
 
@@ -217,5 +354,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: parsebench-output-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ steps.metadata.outputs.output_dir }}
+          path: ${{ steps.config.outputs.output_dir }}
           if-no-files-found: ignore
