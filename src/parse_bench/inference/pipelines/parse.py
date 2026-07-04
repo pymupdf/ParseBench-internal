@@ -528,6 +528,15 @@ def register_parse_pipelines(register_fn) -> None:  # type: ignore[no-untyped-de
 
     register_fn(
         PipelineSpec(
+            pipeline_name="pymupdf4llm_html_tables",
+            provider_name="pymupdf4llm",
+            product_type=ProductType.PARSE,
+            config={"table_output": "html"},
+        )
+    )
+
+    register_fn(
+        PipelineSpec(
             pipeline_name="markitdown",
             provider_name="markitdown",
             product_type=ProductType.PARSE,
