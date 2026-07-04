@@ -86,6 +86,19 @@ class PyMuPDF4LLMProvider(Provider):
                 raise ProviderConfigError("PyMuPDF4LLM 'ocr_language' must be a non-empty string")
             options["ocr_language"] = ocr_language
 
+        table_output = self.base_config.get("table_output")
+        if table_output is not None:
+            if not isinstance(table_output, str):
+                raise ProviderConfigError("PyMuPDF4LLM 'table_output' must be a string")
+            normalized_table_output = table_output.strip().lower()
+            if normalized_table_output not in ("markdown", "html"):
+                raise ProviderConfigError("PyMuPDF4LLM 'table_output' must be 'markdown' or 'html'")
+            # Opt-in HTML table rendering. pymupdf4llm builds that ship the native
+            # HTML table engine emit structured <table> markup for table_output="html";
+            # builds without it ignore the extra keyword, so the default markdown
+            # pipelines above are unaffected.
+            options["table_output"] = normalized_table_output
+
         raw_backend = self.base_config.get("ocr_backend")
         if raw_backend is None:
             return options

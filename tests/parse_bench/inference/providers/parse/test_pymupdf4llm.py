@@ -241,3 +241,21 @@ def test_resolve_ocr_function_tesseract_with_tessdata_resolves(monkeypatch: pyte
 
     provider = PyMuPDF4LLMProvider("pymupdf4llm", {"ocr_backend": "tesseract"})
     assert provider._resolve_ocr_function() is _sentinel_exec_ocr
+
+
+def test_markdown_options_threads_table_output() -> None:
+    provider = PyMuPDF4LLMProvider("pymupdf4llm", {"table_output": "html"})
+    options = provider._markdown_options()
+    assert options["table_output"] == "html"
+
+
+def test_markdown_options_omits_table_output_by_default() -> None:
+    provider = PyMuPDF4LLMProvider("pymupdf4llm", {})
+    options = provider._markdown_options()
+    assert "table_output" not in options
+
+
+def test_markdown_options_rejects_unknown_table_output() -> None:
+    provider = PyMuPDF4LLMProvider("pymupdf4llm", {"table_output": "xml"})
+    with pytest.raises(ProviderConfigError):
+        provider._markdown_options()
