@@ -2792,8 +2792,6 @@ class KdlFrontierNanoLayoutAdapter(LayoutAdapter):
 class PyMuPDF4LLMLayoutAdapter(LayoutAdapter):
     """Extract canonical layout predictions from PyMuPDF4LLM parse output."""
 
-    _SCALE = 1000
-
     @classmethod
     def matches(cls, inference_result: InferenceResult) -> bool:
         if not isinstance(inference_result.output, ParseOutput) or not inference_result.output.layout_pages:
@@ -2819,29 +2817,44 @@ class PyMuPDF4LLMLayoutAdapter(LayoutAdapter):
         if not isinstance(inference_result.output, ParseOutput):
             raise ValueError("PyMuPDF4LLMLayoutAdapter requires ParseOutput or LayoutOutput")
 
+        layout_pages = inference_result.output.layout_pages
+        # Segments are normalized to [0, 1] against their own page. Scale each by
+        # its real page dimensions and expose the (reference) page's real
+        # dimensions as image_width/height so the metric's normalize_bbox_xyxy
+        # round-trips back to [0, 1] (a numeric no-op vs. the old synthetic 1000
+        # scale). Mirrors DoclingParseLayoutAdapter's real-dimension convention.
+        selected_pages = [lp for lp in layout_pages if page_filter is None or lp.page_number == page_filter]
+        reference_page = selected_pages[0] if selected_pages else (layout_pages[0] if layout_pages else None)
+        output_width = int(reference_page.width or 1) if reference_page is not None else 1
+        output_height = int(reference_page.height or 1) if reference_page is not None else 1
+
         predictions: list[LayoutPrediction] = []
-        for page in inference_result.output.layout_pages:
+        for page in layout_pages:
             if page_filter is not None and page.page_number != page_filter:
                 continue
+            page_width = float(page.width or output_width)
+            page_height = float(page.height or output_height)
             for item in page.items:
                 segments = item.layout_segments or ([item.bbox] if item.bbox is not None else [])
                 for segment in segments:
                     if segment is None:
                         continue
+                    # Emit the raw provider label; canonicalization happens in the
+                    # label-mapper layer during projection.
                     label = segment.label or item.type or "Text"
-                    content_text = item.html if label == "Table" and item.html else item.md or item.value
+                    is_table = item.type == "table"
+                    content_text = item.html if is_table and item.html else item.md or item.value
                     content = _build_docling_parse_content(
-                        "table" if label == "Table" else "text",
+                        "table" if is_table else "text",
                         content_text,
                     )
-                    scale = self._SCALE
                     predictions.append(
                         LayoutPrediction(
                             bbox=[
-                                segment.x * scale,
-                                segment.y * scale,
-                                (segment.x + segment.w) * scale,
-                                (segment.y + segment.h) * scale,
+                                segment.x * page_width,
+                                segment.y * page_height,
+                                (segment.x + segment.w) * page_width,
+                                (segment.y + segment.h) * page_height,
                             ],
                             score=segment.confidence if segment.confidence is not None else 1.0,
                             label=label,
@@ -2861,8 +2874,8 @@ class PyMuPDF4LLMLayoutAdapter(LayoutAdapter):
             example_id=inference_result.request.example_id,
             pipeline_name=inference_result.pipeline_name,
             model=LayoutDetectionModel.PYMUPDF4LLM_LAYOUT,
-            image_width=self._SCALE,
-            image_height=self._SCALE,
+            image_width=max(output_width, 1),
+            image_height=max(output_height, 1),
             predictions=predictions,
             markdown=inference_result.output.markdown,
         )

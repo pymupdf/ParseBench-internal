@@ -31,24 +31,6 @@ from parse_bench.schemas.product import ProductType
 logger = logging.getLogger(__name__)
 
 
-# PyMuPDF Layout 1.28 emits exactly the DocLayNet/Core11 classes. Keep the
-# mapping strict so a new upstream class does not silently become incorrect
-# benchmark ground truth.
-_PYMUPDF_CLASS_TO_CANONICAL = {
-    "caption": "Caption",
-    "footnote": "Footnote",
-    "formula": "Formula",
-    "list-item": "List-item",
-    "page-footer": "Page-footer",
-    "page-header": "Page-header",
-    "picture": "Picture",
-    "section-header": "Section-header",
-    "table": "Table",
-    "text": "Text",
-    "title": "Title",
-}
-
-
 @register_provider("pymupdf4llm")
 class PyMuPDF4LLMProvider(Provider):
     """Provider for PyMuPDF4LLM (markdown). AGPL — runtime dep only."""
@@ -309,17 +291,18 @@ class PyMuPDF4LLMProvider(Provider):
             return None
 
         items: list[LayoutItemIR] = []
-        unknown_classes: set[str] = set()
         for page_box in page_data.get("page_boxes", []):
             if not isinstance(page_box, dict):
                 continue
 
-            raw_class = str(page_box.get("class", "")).strip().lower().replace("_", "-")
-            canonical_label = _PYMUPDF_CLASS_TO_CANONICAL.get(raw_class)
-            if canonical_label is None:
-                if raw_class:
-                    unknown_classes.add(raw_class)
+            # Emit the raw pymupdf4llm boxclass label untouched. Canonicalization
+            # and failing loud on genuinely unknown classes are owned by the
+            # evaluation label-mapper layer (PyMuPDF4LLMLabelMapper), not the
+            # provider, so no class is silently dropped here.
+            raw_label = str(page_box.get("class", "")).strip()
+            if not raw_label:
                 continue
+            normalized_class = raw_label.lower().replace("_", "-")
 
             bbox = cls._coerce_bbox(
                 page_box.get("bbox"),
@@ -354,20 +337,23 @@ class PyMuPDF4LLMProvider(Provider):
                 w=bbox[2],
                 h=bbox[3],
                 confidence=confidence,
-                label=canonical_label,
+                label=raw_label,
                 start_index=start_index,
                 end_index=end_index,
             )
 
-            if canonical_label == "Table":
+            if normalized_class == "table":
                 item_type = "table"
-                item_html = cls._convert_md_tables_to_html(content)
-            elif canonical_label == "Picture":
+                # If the sliced content is already native HTML (e.g. a pipeline
+                # opted into table_output="html"), keep it verbatim; otherwise
+                # convert Markdown pipe tables via markdown2.
+                item_html = content if "<table" in content.lower() else cls._convert_md_tables_to_html(content)
+            elif normalized_class == "picture":
                 item_type = "image"
                 item_html = ""
             else:
                 # Field-grounding evaluation consumes text-like items while the
-                # canonical category remains on the segment label.
+                # raw provider category remains on the segment label.
                 item_type = "text"
                 item_html = ""
 
@@ -380,13 +366,6 @@ class PyMuPDF4LLMProvider(Provider):
                     bbox=segment,
                     layout_segments=[segment],
                 )
-            )
-
-        if unknown_classes:
-            logger.warning(
-                "Skipping unknown PyMuPDF4LLM layout classes on page %s: %s",
-                page_number,
-                ", ".join(sorted(unknown_classes)),
             )
 
         return ParseLayoutPageIR(
