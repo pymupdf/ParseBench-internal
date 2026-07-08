@@ -212,3 +212,32 @@ def test_resolve_ocr_function_missing_exec_ocr(monkeypatch: pytest.MonkeyPatch) 
     provider = PyMuPDF4LLMProvider("pymupdf4llm", {"ocr_backend": "tesseract"})
     with pytest.raises(ProviderConfigError, match="does not expose exec_ocr"):
         provider._resolve_ocr_function()
+
+
+def test_resolve_ocr_function_tesseract_without_tessdata_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicitly requested tesseract backend must not silently skip OCR.
+
+    pymupdf4llm's tesseract_api imports cleanly when Tesseract is missing (it
+    warns and its exec_ocr becomes a per-page no-op), so the ImportError guard
+    never fires. The provider must read the module's TESSDATA marker and raise
+    instead of letting the run quietly score without OCR.
+    """
+    fake_module = types.SimpleNamespace(exec_ocr=lambda *a, **k: None, TESSDATA=None)
+    monkeypatch.setattr(pymupdf4llm_module.importlib, "import_module", lambda name: fake_module)
+
+    provider = PyMuPDF4LLMProvider("pymupdf4llm", {"ocr_backend": "tesseract"})
+    with pytest.raises(ProviderConfigError, match="Tesseract language data"):
+        provider._resolve_ocr_function()
+
+
+def test_resolve_ocr_function_tesseract_with_tessdata_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With Tesseract available (TESSDATA set), resolution succeeds."""
+
+    def _sentinel_exec_ocr(*args: object, **kwargs: object) -> None:
+        return None
+
+    fake_module = types.SimpleNamespace(exec_ocr=_sentinel_exec_ocr, TESSDATA="/usr/share/tessdata")
+    monkeypatch.setattr(pymupdf4llm_module.importlib, "import_module", lambda name: fake_module)
+
+    provider = PyMuPDF4LLMProvider("pymupdf4llm", {"ocr_backend": "tesseract"})
+    assert provider._resolve_ocr_function() is _sentinel_exec_ocr

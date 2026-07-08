@@ -42,7 +42,6 @@ _OCR_BACKEND_MODULES = {
 }
 
 
-
 @register_provider("pymupdf4llm")
 class PyMuPDF4LLMProvider(Provider):
     """Provider for PyMuPDF4LLM (markdown). AGPL — runtime dep only."""
@@ -130,6 +129,17 @@ class PyMuPDF4LLMProvider(Provider):
         ocr_function = getattr(ocr_module, "exec_ocr", None)
         if not callable(ocr_function):
             raise ProviderConfigError(f"PyMuPDF4LLM OCR backend '{raw_backend}' does not expose exec_ocr")
+        # The tesseract backend module imports cleanly even when Tesseract is
+        # missing: it warns once and its exec_ocr becomes a per-page no-op
+        # (pymupdf4llm/ocr/tesseract_api.py), so the import guard above never
+        # fires for it. A benchmark run must not silently score without the OCR
+        # the user asked for, so read the module's import-time availability
+        # marker (no extra subprocess probe) and fail loudly instead.
+        if getattr(ocr_module, "TESSDATA", True) is None:
+            raise ProviderConfigError(
+                f"PyMuPDF4LLM OCR backend '{raw_backend}' is unavailable: "
+                "Tesseract language data was not found (pymupdf.get_tessdata() returned None)"
+            )
         return ocr_function
 
     def _extract(self, pdf_path: str) -> dict[str, Any]:
