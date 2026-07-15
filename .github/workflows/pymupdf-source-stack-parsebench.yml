@@ -1,8 +1,13 @@
 name: ParseBench Version Lab
 
 run-name: >-
-  PyMuPDF ${{ inputs.pymupdf_ref }} · Layout ${{ inputs.pymupdf_layout_ref }} ·
-  PyMuPDF4LLM ${{ inputs.pymupdf4llm_ref }} · ${{ inputs.run_scope }}
+  ${{
+    inputs.pymupdf_ref == '1.28.0' &&
+    inputs.pymupdf_layout_ref == '1.28.0' &&
+    inputs.pymupdf4llm_ref == '1.28.0' &&
+    'Versions 1.28.0' ||
+    'Custom versions'
+  }} · ${{ inputs.run_scope }} · ${{ inputs.group }}
 
 on:
   workflow_dispatch:

@@ -27,6 +27,12 @@ category, pipeline, and source configuration. For ParseBench and all three
 components, the summary shows both the branch, tag, or SHA entered by the user
 and the exact 40-character commit checked out for that run.
 
+The Actions run list uses a deliberately short title. It shows `Versions
+1.28.0` when all three standard versions are selected and `Custom versions`
+for any other combination, followed by the dataset size and document category.
+Full refs and commits remain in the run summary rather than making the run-list
+title unreadably long.
+
 ## Private repository access
 
 PyMuPDF Layout source is currently read from the private
