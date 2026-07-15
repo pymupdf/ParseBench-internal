@@ -55,6 +55,10 @@ uv run parse-bench run llamaparse_agentic
 uv run parse-bench serve llamaparse_agentic
 ```
 
+To benchmark selected Git branches, tags, or commits of PyMuPDF, PyMuPDF
+Layout, and PyMuPDF4LLM together, see the
+[source-stack workflow guide](docs/pymupdf-source-stack-workflow.md).
+
 ## Available Pipelines
 
 A **pipeline** is a document parsing tool or configuration that you want to evaluate. There are 90+ pipelines available -- see [docs/pipelines.md](docs/pipelines.md) for the full list, or run `uv run parse-bench pipelines`.
