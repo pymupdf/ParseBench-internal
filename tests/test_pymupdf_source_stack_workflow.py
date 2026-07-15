@@ -17,6 +17,7 @@ def _load_module(name: str):
         spec = importlib.util.spec_from_file_location(name, path)
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
         spec.loader.exec_module(module)
         return module
     finally:
@@ -25,6 +26,7 @@ def _load_module(name: str):
 
 configure = _load_module("configure")
 benchmark = _load_module("benchmark")
+results_summary = _load_module("write_results_summary")
 
 
 @pytest.mark.parametrize(
@@ -83,3 +85,57 @@ def test_evaluation_groups_expands_text_categories(tmp_path: Path) -> None:
 def test_evaluation_groups_rejects_missing_inference_results(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="No inference result groups found"):
         benchmark.evaluation_groups(tmp_path)
+
+
+def _write_report(path: Path, *, total: int, metrics: dict[str, float]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"total_examples": total, "aggregate_metrics": metrics}),
+        encoding="utf-8",
+    )
+
+
+def test_results_summary_uses_dashboard_headline_metrics_and_overall_average(tmp_path: Path) -> None:
+    _write_report(
+        tmp_path / "table" / "_evaluation_report.json",
+        total=3,
+        metrics={"avg_grits_trm_composite": 0.6, "avg_rule_pass_rate": 0.9},
+    )
+    _write_report(
+        tmp_path / "text_content" / "_evaluation_report.json",
+        total=4,
+        metrics={"avg_content_faithfulness": 0.8, "avg_rule_pass_rate_judge": 1.0},
+    )
+
+    scores = results_summary.load_scores(tmp_path, "all")
+    markdown, data = results_summary.build_summary(scores)
+
+    assert data["overall_score"] == pytest.approx(0.7)
+    assert "Overall aggregate score: **70.0%**" in markdown
+    assert "| Table | GriTS table score | 60.0% | 3 |" in markdown
+    assert "| Text Content | Content faithfulness | 80.0% | 4 |" in markdown
+
+
+def test_results_summary_supports_single_category_report(tmp_path: Path) -> None:
+    _write_report(
+        tmp_path / "_evaluation_report.json",
+        total=2,
+        metrics={"avg_layout_element_rule_pass_rate": 0.75},
+    )
+
+    scores = results_summary.load_scores(tmp_path, "layout")
+
+    assert scores == [results_summary.CategoryScore("layout", "layout_element_rule_pass_rate", 0.75, 2)]
+
+
+def test_results_summary_falls_back_to_rule_pass_rate(tmp_path: Path) -> None:
+    _write_report(
+        tmp_path / "chart" / "_evaluation_report.json",
+        total=1,
+        metrics={"avg_rule_pass_rate": 0.25, "avg_rule_pass_rate_judge": 0.5},
+    )
+
+    scores = results_summary.load_scores(tmp_path, "all")
+
+    assert scores[0].metric == "rule_pass_rate"
+    assert scores[0].score == 0.25

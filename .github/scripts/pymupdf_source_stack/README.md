@@ -7,6 +7,11 @@ and user-facing step names stay visible there. Branching, JSON generation,
 source discovery, benchmark commands, publishing, and summary rendering live
 here so they can be linted and tested as normal Python.
 
+Successful runs read the generated `_evaluation_report.json` files and append
+an overall aggregate plus category headline scores directly to the GitHub run
+summary. `_benchmark_scores.json` records the same values in the uploaded
+artifact.
+
 Each script is a small command with one responsibility. Inputs supplied by the
 workflow are passed through environment variables, while values needed by later
 steps are written using the standard `GITHUB_OUTPUT` and

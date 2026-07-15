@@ -249,6 +249,12 @@ jobs:
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
         run: .venv/bin/python "$WORKFLOW_SCRIPTS/benchmark.py" report
 
+      - name: Add aggregate results to workflow summary
+        env:
+          GROUP: ${{ steps.config.outputs.group }}
+          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
+        run: .venv/bin/python "$WORKFLOW_SCRIPTS/write_results_summary.py"
+
       - name: Upload source-stack GitHub artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

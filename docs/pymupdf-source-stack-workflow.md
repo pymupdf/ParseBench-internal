@@ -27,6 +27,13 @@ category, pipeline, and source configuration. For ParseBench and all three
 components, the summary shows both the branch, tag, or SHA entered by the user
 and the exact 40-character commit checked out for that run.
 
+After a successful benchmark, the same summary shows the aggregate score for
+each tested category and an overall score, without requiring the user to open
+the HTML report. Each category uses the same headline metric selected by the
+ParseBench dashboard, and the overall score is their unweighted average. The
+machine-readable `_benchmark_scores.json` artifact records those values and the
+aggregation method.
+
 The Actions run list uses a deliberately short title. It shows `Versions
 1.28.0` when all three standard versions are selected and `Custom versions`
 for any other combination, followed by the dataset size and document category.
