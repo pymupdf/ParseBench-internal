@@ -24,16 +24,18 @@ PyMuPDF Layout source is currently read from the private
 the selected private source repositories. Public source checkouts fall back to
 the workflow's standard GitHub token.
 
-The `ArtifexSoftware/sce` `master` branch removed the installable runtime
-package on 2026-07-10. The workflow therefore defaults to the last buildable
-commit inspected by ParseBench:
+PyMuPDF Layout uses Git tags even though the private repository does not publish
+entries on GitHub's Releases page. The workflow defaults to the human-readable
+`1.28.0` tag, which resolves to:
 
 ```text
-bc9127e72de0f4d75935a4ef51d141e928dd7943
+2e21fab5bb27e0296cc54c6d73eeb774402553db
 ```
 
-Update the fixed Layout repository in the workflow when the replacement runtime
-repository is available to the ParseBench workflow token.
+The `ArtifexSoftware/sce` `master` branch removed the installable runtime
+package on 2026-07-10, so `master` is not currently a suitable Layout source
+selection. Update the fixed Layout repository in the workflow when the
+replacement runtime repository is available to the ParseBench workflow token.
 
 ## Compatibility gate
 

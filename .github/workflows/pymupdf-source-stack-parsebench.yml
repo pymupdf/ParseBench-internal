@@ -18,9 +18,9 @@ on:
         default: "1.28.0"
         type: string
       pymupdf_layout_ref:
-        description: "Layout version, branch, or commit. Leave unchanged for a standard run."
+        description: "Layout version, branch, or commit. Standard: 1.28.0"
         required: true
-        default: bc9127e72de0f4d75935a4ef51d141e928dd7943
+        default: "1.28.0"
         type: string
       pymupdf4llm_ref:
         description: "PyMuPDF4LLM version, branch, or commit. Standard: 1.28.0"
