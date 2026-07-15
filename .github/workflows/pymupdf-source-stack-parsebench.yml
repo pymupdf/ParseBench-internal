@@ -241,7 +241,7 @@ jobs:
           lines = [
               "## What this run is testing",
               "",
-              f"- **Dataset:** {cell(os.environ['RUN_SCOPE_SELECTION'])}",
+              f"- **Test size:** {cell(os.environ['RUN_SCOPE_SELECTION'])}",
               f"- **Document category:** {cell(os.environ['GROUP_SELECTION'])}",
               f"- **Pipeline:** {cell(os.environ['PIPELINE'])}",
               "- **MuPDF:** selected automatically by the chosen PyMuPDF revision",
