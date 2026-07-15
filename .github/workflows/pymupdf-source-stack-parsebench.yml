@@ -13,17 +13,17 @@ on:
         default: main
         type: string
       pymupdf_ref:
-        description: "PyMuPDF version, branch, or commit. Standard: 1.28.0"
+        description: "All 3 fields: version 1.28.0; branch main; or full 40-character commit SHA, e.g. e9cdfc9e7fe3260efcc9d28713903f075ab05bce. Never paste a GitHub URL."
         required: true
         default: "1.28.0"
         type: string
       pymupdf_layout_ref:
-        description: "Layout version, branch, or commit. Standard: 1.28.0"
+        description: "PyMuPDF Layout selection. Standard: 1.28.0"
         required: true
         default: "1.28.0"
         type: string
       pymupdf4llm_ref:
-        description: "PyMuPDF4LLM version, branch, or commit. Standard: 1.28.0"
+        description: "PyMuPDF4LLM selection. Standard: 1.28.0"
         required: true
         default: "1.28.0"
         type: string

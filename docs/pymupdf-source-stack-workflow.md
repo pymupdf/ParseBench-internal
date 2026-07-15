@@ -10,6 +10,12 @@ ref accepts a release tag, branch, or full commit SHA. Leave the displayed
 defaults unchanged for a standard quick test; prefer full commit SHAs for
 reproducible benchmark runs.
 
+Enter only the Git ref, not a GitHub URL. Examples:
+
+- Version tag: `1.28.0`
+- Branch: `main`
+- Commit: `e9cdfc9e7fe3260efcc9d28713903f075ab05bce` (the full 40-character SHA)
+
 The fixed source repositories are:
 
 - PyMuPDF: `pymupdf/PyMuPDF`
@@ -36,6 +42,21 @@ The `ArtifexSoftware/sce` `master` branch removed the installable runtime
 package on 2026-07-10, so `master` is not currently a suitable Layout source
 selection. Update the fixed Layout repository in the workflow when the
 replacement runtime repository is available to the ParseBench workflow token.
+
+## MuPDF version
+
+MuPDF is the native engine wrapped by PyMuPDF, not a separately installed
+Python dependency. Each PyMuPDF source revision defines the MuPDF source
+release it requires. When this workflow builds the selected PyMuPDF revision,
+PyMuPDF automatically downloads and compiles that matching MuPDF source. For
+example, PyMuPDF `1.28.0` selects MuPDF `1.28.0`.
+
+PyMuPDF has an advanced build override for selecting a different MuPDF source,
+but ParseBench intentionally does not expose it. Allowing the native engine and
+its Python wrapper to vary independently would create unsupported combinations
+that can fail while compiling PyMuPDF, before the source-stack compatibility
+gate. Selecting the PyMuPDF ref therefore selects the corresponding MuPDF
+version automatically.
 
 ## Compatibility gate
 
