@@ -570,7 +570,12 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish benchmark results
+    name: >-
+      ${{
+        needs.benchmark.result == 'success' &&
+        'Publish benchmark results' ||
+        'Publish failure diagnostics'
+      }}
     needs: benchmark
     if: ${{ always() && needs.benchmark.outputs.artifact_name != '' }}
     runs-on: ubuntu-latest
@@ -592,8 +597,14 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Upload outputs to GCS
+      - name: >-
+          ${{
+            needs.benchmark.result == 'success' &&
+            'Upload benchmark results to GCS' ||
+            'Upload failure diagnostics to GCS'
+          }}
         env:
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
           BUCKET: ${{ vars.PARSEBENCH_GCS_BUCKET }}
           DESTINATION: ${{ needs.benchmark.outputs.destination }}
           OUTPUT_DIR: parsebench-output
@@ -614,10 +625,16 @@ jobs:
           gcloud storage cp --recursive "${OUTPUT_DIR}" "gs://${BUCKET}/${DESTINATION}/"
 
           {
-            echo "## PyMuPDF source-stack output"
+            if [[ "${BENCHMARK_RESULT}" == "success" ]]; then
+              echo "## Benchmark results published"
+            else
+              echo "## Failure diagnostics published"
+            fi
             echo
             echo "- GCS path: \`${output_uri}\`"
-            if [[ -f "${OUTPUT_DIR}/_leaderboard.html" ]]; then
+            if [[ "${BENCHMARK_RESULT}" != "success" ]]; then
+              echo "- No completed benchmark results were published; this location contains diagnostics and any partial output."
+            elif [[ -f "${OUTPUT_DIR}/_leaderboard.html" ]]; then
               echo "- Public leaderboard HTML: [download _leaderboard.html](${leaderboard_url})"
             else
               echo "- Public leaderboard HTML: not generated for this run"

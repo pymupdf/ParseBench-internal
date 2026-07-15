@@ -93,3 +93,8 @@ separate publish job downloads the resulting GitHub artifact and uploads it to
 the fixed ParseBench GCS location. Partial diagnostic output is also published
 when compatibility or benchmarking fails. This prevents a selected source
 revision from executing in the credentialed publishing job.
+
+The publishing node is named `Publish benchmark results` after a successful
+benchmark. After a failure, the same secured publishing path is instead named
+`Publish failure diagnostics`, and its summary explicitly states that no
+completed benchmark results were published.

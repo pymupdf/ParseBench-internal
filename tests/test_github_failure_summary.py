@@ -79,6 +79,7 @@ def test_build_summary_includes_compatibility_traceback_and_failed_step(tmp_path
     assert "TypeError: incompatible API" in summary
     assert 'File "check.py", line 5' in summary
     assert "https://github.example/actions/runs/7" in summary
+    assert "Publishing failure diagnostics: **success**" in summary
 
 
 def test_build_summary_includes_structured_source_failure(tmp_path: Path) -> None:
@@ -109,3 +110,17 @@ def test_build_summary_includes_structured_source_failure(tmp_path: Path) -> Non
     assert "not an installable Python package" in summary
     assert "f2ba092e61cd140cb3db46ddaaadbdb2363bafdd" in summary
     assert "benchmark execution were skipped" in summary
+
+
+def test_build_summary_labels_failed_result_publication_clearly(tmp_path: Path) -> None:
+    summary = summary_module.build_summary(
+        jobs=[],
+        logs={},
+        diagnostics=tmp_path,
+        run_url="https://github.example/actions/runs/9",
+        benchmark_result="success",
+        publish_result="failure",
+    )
+
+    assert "Publishing benchmark results: **failure**" in summary
+    assert "Publishing failure diagnostics" not in summary

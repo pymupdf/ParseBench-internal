@@ -172,7 +172,11 @@ def build_summary(
         f"[Open the workflow run]({run_url})",
         "",
         f"- Benchmark job: **{benchmark_result}**",
-        f"- Publishing job: **{publish_result}**",
+        (
+            f"- Publishing benchmark results: **{publish_result}**"
+            if benchmark_result == "success"
+            else f"- Publishing failure diagnostics: **{publish_result}**"
+        ),
     ]
 
     for failure in _structured_failures(diagnostics):
