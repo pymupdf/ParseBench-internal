@@ -63,6 +63,7 @@ env:
   GCS_PREFIX: parsebench/pymupdf_source_stack
   DATASET_CACHE_VERSION: v1
   UV_NO_SYNC: "1"
+  WORKFLOW_SCRIPTS: .workflow-support/.github/scripts/pymupdf_source_stack
 
 jobs:
   benchmark:
@@ -79,6 +80,14 @@ jobs:
         with:
           ref: ${{ inputs.benchmark_ref }}
 
+      - name: Checkout workflow helpers
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-support
+          persist-credentials: false
+          sparse-checkout: .github/scripts/pymupdf_source_stack
+
       - name: Initialize run configuration
         id: config
         env:
@@ -88,86 +97,7 @@ jobs:
           PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
           PYMUPDF_REF: ${{ inputs.pymupdf_ref }}
           RUN_SCOPE_SELECTION: ${{ inputs.run_scope }}
-        run: |
-          set -euo pipefail
-
-          case "${RUN_SCOPE_SELECTION}" in
-            "Quick test (15 cases)") run_scope="test" ;;
-            "Full benchmark (~2,000 pages)") run_scope="full" ;;
-            *) echo "Unsupported dataset size: ${RUN_SCOPE_SELECTION}" >&2; exit 1 ;;
-          esac
-
-          case "${GROUP_SELECTION}" in
-            "All categories") group="all" ;;
-            Charts) group="chart" ;;
-            Tables) group="table" ;;
-            "Page layout") group="layout" ;;
-            "Text content") group="text_content" ;;
-            "Text formatting") group="text_formatting" ;;
-            *) echo "Unsupported document category: ${GROUP_SELECTION}" >&2; exit 1 ;;
-          esac
-
-          output_dir="${RUNNER_TEMP}/parsebench-output"
-          data_dir="data"
-          if [[ "${run_scope}" == "test" ]]; then
-            data_dir="data/test"
-          fi
-
-          safe_ref() {
-            printf '%s' "$1" | tr '/:@ ' '----' | tr -cd 'A-Za-z0-9._-' | cut -c1-48
-          }
-
-          benchmark_label="$(safe_ref "${BENCHMARK_REF}")"
-          pymupdf_label="$(safe_ref "${PYMUPDF_REF}")"
-          layout_label="$(safe_ref "${PYMUPDF_LAYOUT_REF}")"
-          llm_label="$(safe_ref "${PYMUPDF4LLM_REF}")"
-          stack_label="pymupdf-${pymupdf_label}_layout-${layout_label}_4llm-${llm_label}"
-          clean_prefix="${GCS_PREFIX#/}"
-          clean_prefix="${clean_prefix%/}"
-          destination="${clean_prefix}/${stack_label}/${benchmark_label}/run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}"
-          artifact_name="pymupdf-source-stack-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-
-          mkdir -p "${output_dir}"
-
-          {
-            echo "artifact_name=${artifact_name}"
-            echo "benchmark_ref=${BENCHMARK_REF}"
-            echo "data_dir=${data_dir}"
-            echo "destination=${destination}"
-            echo "group=${group}"
-            echo "output_dir=${output_dir}"
-            echo "run_scope=${run_scope}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Record requested source stack
-        env:
-          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
-          PYMUPDF4LLM_REF: ${{ inputs.pymupdf4llm_ref }}
-          PYMUPDF4LLM_REPOSITORY: pymupdf/pymupdf4llm
-          PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
-          PYMUPDF_LAYOUT_REPOSITORY: ArtifexSoftware/sce
-          PYMUPDF_REF: ${{ inputs.pymupdf_ref }}
-          PYMUPDF_REPOSITORY: pymupdf/PyMuPDF
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          request = {
-              "pymupdf": {"repository": os.environ["PYMUPDF_REPOSITORY"], "ref": os.environ["PYMUPDF_REF"]},
-              "pymupdf_layout": {
-                  "repository": os.environ["PYMUPDF_LAYOUT_REPOSITORY"],
-                  "ref": os.environ["PYMUPDF_LAYOUT_REF"],
-              },
-              "pymupdf4llm": {
-                  "repository": os.environ["PYMUPDF4LLM_REPOSITORY"],
-                  "ref": os.environ["PYMUPDF4LLM_REF"],
-              },
-          }
-          output = Path(os.environ["OUTPUT_DIR"]) / "_source_request.json"
-          output.write_text(json.dumps(request, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
+        run: python3 "$WORKFLOW_SCRIPTS/configure.py"
 
       - name: Checkout PyMuPDF
         uses: actions/checkout@v4
@@ -207,56 +137,7 @@ jobs:
           PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
           PYMUPDF_REF: ${{ inputs.pymupdf_ref }}
           RUN_SCOPE_SELECTION: ${{ inputs.run_scope }}
-        run: |
-          python3 - <<'PY'
-          import os
-          import subprocess
-          from pathlib import Path
-
-          def sha(path: str = ".") -> str:
-              return subprocess.check_output(
-                  ["git", "-C", path, "rev-parse", "HEAD"],
-                  text=True,
-              ).strip()
-
-          def cell(value: str) -> str:
-              return value.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
-
-          rows = [
-              ("ParseBench", os.environ["GITHUB_REPOSITORY"], os.environ["BENCHMARK_REF"], sha()),
-              ("PyMuPDF", "pymupdf/PyMuPDF", os.environ["PYMUPDF_REF"], sha(".source/pymupdf")),
-              (
-                  "PyMuPDF Layout",
-                  "ArtifexSoftware/sce",
-                  os.environ["PYMUPDF_LAYOUT_REF"],
-                  sha(".source/pymupdf-layout"),
-              ),
-              (
-                  "PyMuPDF4LLM",
-                  "pymupdf/pymupdf4llm",
-                  os.environ["PYMUPDF4LLM_REF"],
-                  sha(".source/pymupdf4llm"),
-              ),
-          ]
-          lines = [
-              "## What this run is testing",
-              "",
-              f"- **Test size:** {cell(os.environ['RUN_SCOPE_SELECTION'])}",
-              f"- **Document category:** {cell(os.environ['GROUP_SELECTION'])}",
-              f"- **Pipeline:** {cell(os.environ['PIPELINE'])}",
-              "- **MuPDF:** selected automatically by the chosen PyMuPDF revision",
-              "",
-              "| Component | Repository | Requested selection | Exact commit used |",
-              "| --- | --- | --- | --- |",
-          ]
-          for component, repository, requested, commit in rows:
-              lines.append(
-                  f"| {cell(component)} | `{cell(repository)}` | `{cell(requested)}` | `{cell(commit)}` |"
-              )
-          lines.append("")
-          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
-              summary.write("\n".join(lines))
-          PY
+        run: python3 "$WORKFLOW_SCRIPTS/write_run_summary.py"
 
       - name: Resolve source packages and commits
         id: sources
@@ -265,75 +146,7 @@ jobs:
           PYMUPDF4LLM_REF: ${{ inputs.pymupdf4llm_ref }}
           PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
           PYMUPDF_REF: ${{ inputs.pymupdf_ref }}
-        run: |
-          set -euo pipefail
-
-          resolve_package_dir() {
-            local component="$1"
-            local requested_ref="$2"
-            local root="$3"
-            shift 3
-            local candidates=("${root}" "$@")
-            local resolved_sha
-            resolved_sha="$(git -C "${root}" rev-parse HEAD)"
-            local candidate
-            for candidate in "${candidates[@]}"; do
-              if [[ -f "${candidate}/pyproject.toml" || -f "${candidate}/setup.py" ]]; then
-                printf '%s' "${candidate}"
-                return 0
-              fi
-            done
-
-            python3 - \
-              "${OUTPUT_DIR}/_failure.json" \
-              "${component}" \
-              "${requested_ref}" \
-              "${resolved_sha}" \
-              "${candidates[@]}" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-
-          output, component, requested_ref, resolved_sha, *candidates = sys.argv[1:]
-          locations = ", ".join(candidates)
-          error = (
-              f"{component} at commit {resolved_sha} is not an installable Python package. "
-              f"No pyproject.toml or setup.py was found in: {locations}."
-          )
-          result = {
-              "title": f"Cannot build {component}",
-              "error": error,
-              "component": component,
-              "requested_ref": requested_ref,
-              "resolved_sha": resolved_sha,
-              "details": "Compatibility checks and benchmark execution were skipped because this source cannot be built.",
-          }
-          Path(output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-          PY
-            echo "::error title=Cannot build ${component}::${component} at ${resolved_sha} has no installable Python package" >&2
-            return 1
-          }
-
-          pymupdf_dir="$(resolve_package_dir "PyMuPDF" "${PYMUPDF_REF}" .source/pymupdf)"
-          layout_dir="$(resolve_package_dir \
-            "PyMuPDF Layout" \
-            "${PYMUPDF_LAYOUT_REF}" \
-            .source/pymupdf-layout \
-            .source/pymupdf-layout/pymupdf_layout)"
-          llm_dir="$(resolve_package_dir \
-            "PyMuPDF4LLM" \
-            "${PYMUPDF4LLM_REF}" \
-            .source/pymupdf4llm \
-            .source/pymupdf4llm/pymupdf4llm)"
-
-          {
-            echo "pymupdf_dir=${pymupdf_dir}"
-            echo "pymupdf_sha=$(git -C .source/pymupdf rev-parse HEAD)"
-            echo "layout_dir=${layout_dir}"
-            echo "layout_sha=$(git -C .source/pymupdf-layout rev-parse HEAD)"
-            echo "llm_dir=${llm_dir}"
-            echo "llm_sha=$(git -C .source/pymupdf4llm rev-parse HEAD)"
-          } >> "${GITHUB_OUTPUT}"
+        run: python3 "$WORKFLOW_SCRIPTS/resolve_sources.py"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -357,47 +170,38 @@ jobs:
       - name: Build and install selected PyMuPDF
         env:
           PACKAGE_DIR: ${{ steps.sources.outputs.pymupdf_dir }}
-        run: |
-          uv pip install --python .venv --reinstall --no-deps "${PACKAGE_DIR}"
+        run: uv pip install --python .venv --reinstall --no-deps "$PACKAGE_DIR"
 
       - name: Build and install selected PyMuPDF Layout
         env:
           PACKAGE_DIR: ${{ steps.sources.outputs.layout_dir }}
           PYMUPDF_LAYOUT_SETUP_BUILD_PYMUPDF: "1"
-        run: |
-          uv pip install --python .venv --reinstall --no-build-isolation --no-deps "${PACKAGE_DIR}"
+        run: uv pip install --python .venv --reinstall --no-build-isolation --no-deps "$PACKAGE_DIR"
 
       - name: Build and install selected PyMuPDF4LLM
         env:
           PACKAGE_DIR: ${{ steps.sources.outputs.llm_dir }}
           PYMUPDF_SETUP_VERSION: "1"
-        run: |
-          uv pip install --python .venv --reinstall --no-deps "${PACKAGE_DIR}"
+        run: uv pip install --python .venv --reinstall --no-deps "$PACKAGE_DIR"
 
       - name: Check source stack compatibility
         env:
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
           PYMUPDF4LLM_REF: ${{ inputs.pymupdf4llm_ref }}
-          PYMUPDF4LLM_REPOSITORY: pymupdf/pymupdf4llm
-          PYMUPDF4LLM_SHA: ${{ steps.sources.outputs.llm_sha }}
           PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
-          PYMUPDF_LAYOUT_REPOSITORY: ArtifexSoftware/sce
-          PYMUPDF_LAYOUT_SHA: ${{ steps.sources.outputs.layout_sha }}
           PYMUPDF_REF: ${{ inputs.pymupdf_ref }}
-          PYMUPDF_REPOSITORY: pymupdf/PyMuPDF
-          PYMUPDF_SHA: ${{ steps.sources.outputs.pymupdf_sha }}
         run: |
-          .venv/bin/python scripts/check_pymupdf_stack_compatibility.py \
-            --output "${OUTPUT_DIR}/_compatibility.json" \
-            --pymupdf-repository "${PYMUPDF_REPOSITORY}" \
-            --pymupdf-ref "${PYMUPDF_REF}" \
-            --pymupdf-sha "${PYMUPDF_SHA}" \
-            --pymupdf-layout-repository "${PYMUPDF_LAYOUT_REPOSITORY}" \
-            --pymupdf-layout-ref "${PYMUPDF_LAYOUT_REF}" \
-            --pymupdf-layout-sha "${PYMUPDF_LAYOUT_SHA}" \
-            --pymupdf4llm-repository "${PYMUPDF4LLM_REPOSITORY}" \
-            --pymupdf4llm-ref "${PYMUPDF4LLM_REF}" \
-            --pymupdf4llm-sha "${PYMUPDF4LLM_SHA}"
+          .venv/bin/python "$WORKFLOW_SCRIPTS/check_compatibility.py" \
+            --output "$OUTPUT_DIR/_compatibility.json" \
+            --pymupdf-repository pymupdf/PyMuPDF \
+            --pymupdf-ref "$PYMUPDF_REF" \
+            --pymupdf-sha "${{ steps.sources.outputs.pymupdf_sha }}" \
+            --pymupdf-layout-repository ArtifexSoftware/sce \
+            --pymupdf-layout-ref "$PYMUPDF_LAYOUT_REF" \
+            --pymupdf-layout-sha "${{ steps.sources.outputs.layout_sha }}" \
+            --pymupdf4llm-repository pymupdf/pymupdf4llm \
+            --pymupdf4llm-ref "$PYMUPDF4LLM_REF" \
+            --pymupdf4llm-sha "${{ steps.sources.outputs.llm_sha }}"
 
       - name: Restore ParseBench dataset cache
         uses: actions/cache@v4
@@ -412,12 +216,7 @@ jobs:
       - name: Download ParseBench dataset
         env:
           RUN_SCOPE: ${{ steps.config.outputs.run_scope }}
-        run: |
-          if [[ "${RUN_SCOPE}" == "test" ]]; then
-            uv run parse-bench download --test
-          else
-            uv run parse-bench download
-          fi
+        run: .venv/bin/python "$WORKFLOW_SCRIPTS/benchmark.py" download
 
       - name: Write run metadata
         env:
@@ -425,146 +224,30 @@ jobs:
           DESTINATION: ${{ steps.config.outputs.destination }}
           GROUP: ${{ steps.config.outputs.group }}
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
+          PARSEBENCH_GCS_BUCKET: ${{ vars.PARSEBENCH_GCS_BUCKET }}
           RUN_SCOPE: ${{ steps.config.outputs.run_scope }}
-        run: |
-          .venv/bin/python - <<'PY'
-          import json
-          import os
-          import subprocess
-          from pathlib import Path
-
-          output_dir = Path(os.environ["OUTPUT_DIR"])
-          compatibility = json.loads((output_dir / "_compatibility.json").read_text(encoding="utf-8"))
-          metadata = {
-              "pipeline": os.environ["PIPELINE"],
-              "benchmark_ref_input": os.environ["BENCHMARK_REF"],
-              "checked_out_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-              "github_ref": os.environ["GITHUB_REF"],
-              "github_sha": os.environ["GITHUB_SHA"],
-              "github_repository": os.environ["GITHUB_REPOSITORY"],
-              "github_run_id": os.environ["GITHUB_RUN_ID"],
-              "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
-              "github_run_url": (
-                  f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
-                  f"/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-              ),
-              "run_scope": os.environ["RUN_SCOPE"],
-              "group": os.environ["GROUP"],
-              "max_concurrent": 1,
-              "gcs_bucket": os.environ.get("PARSEBENCH_GCS_BUCKET", ""),
-              "gcs_destination": os.environ["DESTINATION"],
-              "source_stack": compatibility,
-          }
-          (output_dir / "_github_run.json").write_text(
-              json.dumps(metadata, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
+        run: .venv/bin/python "$WORKFLOW_SCRIPTS/write_run_metadata.py"
 
       - name: Run PyMuPDF4LLM 150 DPI inference
         env:
           DATA_DIR: ${{ steps.config.outputs.data_dir }}
           GROUP: ${{ steps.config.outputs.group }}
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
-        run: |
-          set -euo pipefail
-          args=(
-            inference run "${PIPELINE}"
-            --input_dir "${DATA_DIR}"
-            --output_dir "${OUTPUT_DIR}"
-            --max_concurrent 1
-          )
-          if [[ "${GROUP}" != "all" ]]; then
-            args+=(--group "${GROUP}")
-          fi
-          uv run parse-bench "${args[@]}"
+        run: .venv/bin/python "$WORKFLOW_SCRIPTS/benchmark.py" inference
 
       - name: Run ParseBench evaluation
         env:
           DATA_DIR: ${{ steps.config.outputs.data_dir }}
           GROUP: ${{ steps.config.outputs.group }}
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
-        run: |
-          set -euo pipefail
-          pipeline_output_dir="${OUTPUT_DIR}/${PIPELINE}"
-
-          if [[ "${GROUP}" != "all" ]]; then
-            uv run parse-bench evaluation run \
-              --output_dir "${pipeline_output_dir}" \
-              --test_cases_dir "${DATA_DIR}" \
-              --group "${GROUP}" \
-              --report_dir "${pipeline_output_dir}" \
-              --export_csv=False \
-              --export_rule_csv=False \
-              --export_markdown=False \
-              --export_html=False
-            exit 0
-          fi
-
-          mapfile -t inference_groups < <(
-            find "${pipeline_output_dir}" -mindepth 2 -maxdepth 2 -name '*.result.json' -printf '%h\n' \
-              | xargs -r -n1 basename \
-              | sort -u
-          )
-          if [[ "${#inference_groups[@]}" -eq 0 ]]; then
-            echo "No inference result groups found in ${pipeline_output_dir}" >&2
-            exit 1
-          fi
-
-          eval_groups=()
-          for group in "${inference_groups[@]}"; do
-            if [[ "${group}" == "text" ]]; then
-              eval_groups+=(text_content text_formatting)
-            else
-              eval_groups+=("${group}")
-            fi
-          done
-          mapfile -t eval_groups < <(printf '%s\n' "${eval_groups[@]}" | sort -u)
-          printf '%s\n' "${eval_groups[@]}" > "${pipeline_output_dir}/_eval_groups.txt"
-
-          for group in "${eval_groups[@]}"; do
-            uv run parse-bench evaluation run \
-              --output_dir "${pipeline_output_dir}" \
-              --test_cases_dir "${DATA_DIR}" \
-              --group "${group}" \
-              --report_dir "${pipeline_output_dir}/${group}" \
-              --export_csv=False \
-              --export_rule_csv=False \
-              --export_markdown=False \
-              --export_html=False
-          done
+        run: .venv/bin/python "$WORKFLOW_SCRIPTS/benchmark.py" evaluate
 
       - name: Generate ParseBench reports
         env:
           DATA_DIR: ${{ steps.config.outputs.data_dir }}
           GROUP: ${{ steps.config.outputs.group }}
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
-        run: |
-          set -euo pipefail
-          pipeline_output_dir="${OUTPUT_DIR}/${PIPELINE}"
-
-          if [[ "${GROUP}" != "all" ]]; then
-            uv run parse-bench evaluation regenerate_report \
-              --evaluation_dir "${pipeline_output_dir}" \
-              --test_cases_dir "${DATA_DIR}" \
-              --output_dir "${pipeline_output_dir}" \
-              --report_dir "${pipeline_output_dir}"
-          else
-            while IFS= read -r group; do
-              [[ -n "${group}" ]] || continue
-              uv run parse-bench evaluation regenerate_report \
-                --evaluation_dir "${pipeline_output_dir}/${group}" \
-                --test_cases_dir "${DATA_DIR}" \
-                --output_dir "${pipeline_output_dir}" \
-                --report_dir "${pipeline_output_dir}/${group}"
-            done < "${pipeline_output_dir}/_eval_groups.txt"
-
-            uv run parse-bench analysis generate_dashboard \
-              --evaluation_dir "${pipeline_output_dir}" \
-              --pipeline_name "${PIPELINE}"
-            uv run parse-bench analysis generate_leaderboard \
-              --output_dir "${OUTPUT_DIR}"
-          fi
+        run: .venv/bin/python "$WORKFLOW_SCRIPTS/benchmark.py" report
 
       - name: Upload source-stack GitHub artifact
         if: ${{ always() }}
@@ -582,6 +265,14 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Checkout publishing helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-support
+          persist-credentials: false
+          sparse-checkout: .github/scripts/pymupdf_source_stack
+
       - name: Download benchmark artifact
         uses: actions/download-artifact@v4
         with:
@@ -597,49 +288,13 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: >-
-          ${{
-            needs.benchmark.result == 'success' &&
-            'Upload benchmark results to GCS' ||
-            'Upload failure diagnostics to GCS'
-          }}
+      - name: Publish results or failure diagnostics
         env:
           BENCHMARK_RESULT: ${{ needs.benchmark.result }}
           BUCKET: ${{ vars.PARSEBENCH_GCS_BUCKET }}
           DESTINATION: ${{ needs.benchmark.outputs.destination }}
           OUTPUT_DIR: parsebench-output
-        run: |
-          set -euo pipefail
-          if [[ -z "${BUCKET}" ]]; then
-            echo "PARSEBENCH_GCS_BUCKET repository variable is not set" >&2
-            exit 1
-          fi
-          if ! find "${OUTPUT_DIR}" -type f -print -quit | grep -q .; then
-            echo "No output files found in ${OUTPUT_DIR}" >&2
-            exit 1
-          fi
-
-          output_uri="gs://${BUCKET}/${DESTINATION}/parsebench-output/"
-          public_url="https://storage.googleapis.com/${BUCKET}/${DESTINATION}/parsebench-output/"
-          leaderboard_url="${public_url}_leaderboard.html"
-          gcloud storage cp --recursive "${OUTPUT_DIR}" "gs://${BUCKET}/${DESTINATION}/"
-
-          {
-            if [[ "${BENCHMARK_RESULT}" == "success" ]]; then
-              echo "## Benchmark results published"
-            else
-              echo "## Failure diagnostics published"
-            fi
-            echo
-            echo "- GCS path: \`${output_uri}\`"
-            if [[ "${BENCHMARK_RESULT}" != "success" ]]; then
-              echo "- No completed benchmark results were published; this location contains diagnostics and any partial output."
-            elif [[ -f "${OUTPUT_DIR}/_leaderboard.html" ]]; then
-              echo "- Public leaderboard HTML: [download _leaderboard.html](${leaderboard_url})"
-            else
-              echo "- Public leaderboard HTML: not generated for this run"
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
+        run: python3 "$WORKFLOW_SCRIPTS/publish.py"
 
   report_outcome:
     name: Report final outcome
@@ -654,19 +309,17 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout summary helpers
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-support
+          persist-credentials: false
+          sparse-checkout: .github/scripts/pymupdf_source_stack
+
       - name: Report successful completion
         if: ${{ needs.benchmark.result == 'success' && needs.publish.result == 'success' }}
-        run: |
-          {
-            echo "## Workflow completed successfully"
-            echo
-            echo "- Benchmark: **successful**"
-            echo "- Results publishing: **successful**"
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Checkout failure-summary helper
-        if: ${{ needs.benchmark.result == 'failure' || needs.publish.result == 'failure' }}
-        uses: actions/checkout@v4
+        run: python3 "$WORKFLOW_SCRIPTS/write_outcome.py" success
 
       - name: Download diagnostic artifact
         if: >-
@@ -685,9 +338,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/write_github_failure_summary.py \
+          python3 "$WORKFLOW_SCRIPTS/write_failure_summary.py" \
             --diagnostics failure-diagnostics \
-            --output "${GITHUB_STEP_SUMMARY}" \
+            --output "$GITHUB_STEP_SUMMARY" \
             --benchmark-result "${{ needs.benchmark.result }}" \
             --publish-result "${{ needs.publish.result }}"
 
@@ -699,9 +352,6 @@ jobs:
             (needs.benchmark.result != 'success' || needs.publish.result != 'success')
           }}
         run: |
-          {
-            echo "## Workflow did not complete"
-            echo
-            echo "- Benchmark job: **${{ needs.benchmark.result }}**"
-            echo "- Publishing job: **${{ needs.publish.result }}**"
-          } >> "${GITHUB_STEP_SUMMARY}"
+          python3 "$WORKFLOW_SCRIPTS/write_outcome.py" incomplete \
+            --benchmark-result "${{ needs.benchmark.result }}" \
+            --publish-result "${{ needs.publish.result }}"

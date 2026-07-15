@@ -7,7 +7,13 @@ from pathlib import Path
 
 
 def _load_module():
-    path = Path(__file__).parents[1] / "scripts" / "write_github_failure_summary.py"
+    path = (
+        Path(__file__).parents[1]
+        / ".github"
+        / "scripts"
+        / "pymupdf_source_stack"
+        / "write_failure_summary.py"
+    )
     spec = importlib.util.spec_from_file_location("write_github_failure_summary", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

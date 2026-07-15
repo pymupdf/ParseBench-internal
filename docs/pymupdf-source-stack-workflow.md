@@ -106,3 +106,18 @@ can display it before the benchmark outcome is known. Once the job runs, its
 step name and summary state whether it published completed benchmark results or
 failure diagnostics. A failure summary explicitly states that no completed
 benchmark results were published.
+
+## Workflow implementation
+
+The workflow file is intentionally limited to GitHub Actions orchestration:
+manual inputs, permissions, jobs, third-party actions, and user-facing step
+names. Its executable logic lives in
+`.github/scripts/pymupdf_source_stack/`, where ordinary Python linting and unit
+tests can cover configuration mapping, source discovery, benchmark routing,
+metadata, publishing, and summary generation.
+
+Each job checks out those helpers from the exact commit containing the workflow
+file. This keeps helper behavior stable even when `benchmark_ref` selects an
+older or different ParseBench revision. The benchmark source itself remains at
+the workspace root, so ParseBench commands continue to run against the selected
+revision.
