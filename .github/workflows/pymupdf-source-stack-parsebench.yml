@@ -641,16 +641,12 @@ jobs:
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
-  explain_failure:
-    name: Explain workflow failure
+  report_outcome:
+    name: Report final outcome
     needs:
       - benchmark
       - publish
-    if: >-
-      ${{
-        always() &&
-        (needs.benchmark.result == 'failure' || needs.publish.result == 'failure')
-      }}
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -658,11 +654,26 @@ jobs:
       contents: read
 
     steps:
+      - name: Report successful completion
+        if: ${{ needs.benchmark.result == 'success' && needs.publish.result == 'success' }}
+        run: |
+          {
+            echo "## Workflow completed successfully"
+            echo
+            echo "- Benchmark: **successful**"
+            echo "- Results publishing: **successful**"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Checkout failure-summary helper
+        if: ${{ needs.benchmark.result == 'failure' || needs.publish.result == 'failure' }}
         uses: actions/checkout@v4
 
       - name: Download diagnostic artifact
-        if: ${{ needs.benchmark.outputs.artifact_name != '' }}
+        if: >-
+          ${{
+            (needs.benchmark.result == 'failure' || needs.publish.result == 'failure') &&
+            needs.benchmark.outputs.artifact_name != ''
+          }}
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -670,6 +681,7 @@ jobs:
           path: failure-diagnostics
 
       - name: Add error details to workflow summary
+        if: ${{ needs.benchmark.result == 'failure' || needs.publish.result == 'failure' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -678,3 +690,18 @@ jobs:
             --output "${GITHUB_STEP_SUMMARY}" \
             --benchmark-result "${{ needs.benchmark.result }}" \
             --publish-result "${{ needs.publish.result }}"
+
+      - name: Report incomplete workflow
+        if: >-
+          ${{
+            needs.benchmark.result != 'failure' &&
+            needs.publish.result != 'failure' &&
+            (needs.benchmark.result != 'success' || needs.publish.result != 'success')
+          }}
+        run: |
+          {
+            echo "## Workflow did not complete"
+            echo
+            echo "- Benchmark job: **${{ needs.benchmark.result }}**"
+            echo "- Publishing job: **${{ needs.publish.result }}**"
+          } >> "${GITHUB_STEP_SUMMARY}"

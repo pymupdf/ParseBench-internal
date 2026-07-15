@@ -87,10 +87,11 @@ details to `_compatibility.json` in the GitHub artifact. Successful runs also
 record all requested refs, resolved commit SHAs, and installed distribution
 versions in `_github_run.json`.
 
-If benchmarking or publishing fails, a final `Explain workflow failure` job
-adds the failed job and step names to the GitHub run summary. It includes the
-complete compatibility traceback when available; for other failures, it
-extracts the exception or relevant error context from the completed job log.
+A final, neutral `Report final outcome` job runs after benchmarking and
+publishing. Successful runs receive a completion summary. Failed runs receive
+the failed job and step names, plus the complete compatibility traceback when
+available or relevant error context from the completed job log. Cancelled or
+otherwise incomplete runs report the final state of both preceding jobs.
 
 ## Output security
 
