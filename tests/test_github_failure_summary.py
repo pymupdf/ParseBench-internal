@@ -79,3 +79,33 @@ def test_build_summary_includes_compatibility_traceback_and_failed_step(tmp_path
     assert "TypeError: incompatible API" in summary
     assert 'File "check.py", line 5' in summary
     assert "https://github.example/actions/runs/7" in summary
+
+
+def test_build_summary_includes_structured_source_failure(tmp_path: Path) -> None:
+    diagnostics = tmp_path / "diagnostics"
+    diagnostics.mkdir()
+    (diagnostics / "_failure.json").write_text(
+        """{
+  "title": "Cannot build PyMuPDF Layout",
+  "error": "PyMuPDF Layout is not an installable Python package.",
+  "requested_ref": "master",
+  "resolved_sha": "f2ba092e61cd140cb3db46ddaaadbdb2363bafdd",
+  "details": "Compatibility checks and benchmark execution were skipped."
+}
+""",
+        encoding="utf-8",
+    )
+
+    summary = summary_module.build_summary(
+        jobs=[],
+        logs={},
+        diagnostics=diagnostics,
+        run_url="https://github.example/actions/runs/8",
+        benchmark_result="failure",
+        publish_result="success",
+    )
+
+    assert "### Cannot build PyMuPDF Layout" in summary
+    assert "not an installable Python package" in summary
+    assert "f2ba092e61cd140cb3db46ddaaadbdb2363bafdd" in summary
+    assert "benchmark execution were skipped" in summary

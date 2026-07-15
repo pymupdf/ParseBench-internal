@@ -255,26 +255,71 @@ jobs:
 
       - name: Resolve source packages and commits
         id: sources
+        env:
+          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
+          PYMUPDF4LLM_REF: ${{ inputs.pymupdf4llm_ref }}
+          PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
+          PYMUPDF_REF: ${{ inputs.pymupdf_ref }}
         run: |
           set -euo pipefail
 
           resolve_package_dir() {
-            local root="$1"
-            shift
+            local component="$1"
+            local requested_ref="$2"
+            local root="$3"
+            shift 3
+            local candidates=("${root}" "$@")
+            local resolved_sha
+            resolved_sha="$(git -C "${root}" rev-parse HEAD)"
             local candidate
-            for candidate in "${root}" "$@"; do
+            for candidate in "${candidates[@]}"; do
               if [[ -f "${candidate}/pyproject.toml" || -f "${candidate}/setup.py" ]]; then
                 printf '%s' "${candidate}"
                 return 0
               fi
             done
-            echo "::error title=Unbuildable source ref::No pyproject.toml or setup.py found under ${root}"
+
+            python3 - \
+              "${OUTPUT_DIR}/_failure.json" \
+              "${component}" \
+              "${requested_ref}" \
+              "${resolved_sha}" \
+              "${candidates[@]}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          output, component, requested_ref, resolved_sha, *candidates = sys.argv[1:]
+          locations = ", ".join(candidates)
+          error = (
+              f"{component} at commit {resolved_sha} is not an installable Python package. "
+              f"No pyproject.toml or setup.py was found in: {locations}."
+          )
+          result = {
+              "title": f"Cannot build {component}",
+              "error": error,
+              "component": component,
+              "requested_ref": requested_ref,
+              "resolved_sha": resolved_sha,
+              "details": "Compatibility checks and benchmark execution were skipped because this source cannot be built.",
+          }
+          Path(output).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+          PY
+            echo "::error title=Cannot build ${component}::${component} at ${resolved_sha} has no installable Python package" >&2
             return 1
           }
 
-          pymupdf_dir="$(resolve_package_dir .source/pymupdf)"
-          layout_dir="$(resolve_package_dir .source/pymupdf-layout .source/pymupdf-layout/pymupdf_layout)"
-          llm_dir="$(resolve_package_dir .source/pymupdf4llm .source/pymupdf4llm/pymupdf4llm)"
+          pymupdf_dir="$(resolve_package_dir "PyMuPDF" "${PYMUPDF_REF}" .source/pymupdf)"
+          layout_dir="$(resolve_package_dir \
+            "PyMuPDF Layout" \
+            "${PYMUPDF_LAYOUT_REF}" \
+            .source/pymupdf-layout \
+            .source/pymupdf-layout/pymupdf_layout)"
+          llm_dir="$(resolve_package_dir \
+            "PyMuPDF4LLM" \
+            "${PYMUPDF4LLM_REF}" \
+            .source/pymupdf4llm \
+            .source/pymupdf4llm/pymupdf4llm)"
 
           {
             echo "pymupdf_dir=${pymupdf_dir}"

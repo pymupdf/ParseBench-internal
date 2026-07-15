@@ -143,6 +143,18 @@ def _compatibility_failures(diagnostics: Path) -> list[dict[str, Any]]:
     return failures
 
 
+def _structured_failures(diagnostics: Path) -> list[dict[str, Any]]:
+    failures = []
+    if not diagnostics.exists():
+        return failures
+    for path in diagnostics.rglob("_failure.json"):
+        try:
+            failures.append(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return failures
+
+
 def build_summary(
     *,
     jobs: list[dict[str, Any]],
@@ -162,6 +174,22 @@ def build_summary(
         f"- Benchmark job: **{benchmark_result}**",
         f"- Publishing job: **{publish_result}**",
     ]
+
+    for failure in _structured_failures(diagnostics):
+        lines.extend(
+            [
+                "",
+                f"### {failure.get('title', 'Failure reason')}",
+                "",
+                str(failure.get("error", "The workflow could not continue.")),
+            ]
+        )
+        if failure.get("requested_ref"):
+            lines.append(f"- Requested selection: `{failure['requested_ref']}`")
+        if failure.get("resolved_sha"):
+            lines.append(f"- Resolved commit: `{failure['resolved_sha']}`")
+        if failure.get("details"):
+            lines.extend(["", str(failure["details"])])
 
     compatibility = _compatibility_failures(diagnostics)
     for result in compatibility:
