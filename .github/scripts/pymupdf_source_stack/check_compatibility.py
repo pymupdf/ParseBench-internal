@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-SMOKE_TEXT = "ParseBench source stack compatibility check"
+SMOKE_MARKERS = ("PARSEBENCH", "INVOICE NUMBER", "GRAND TOTAL")
 
 
 def _distribution_version(name: str) -> str | None:
@@ -57,16 +57,20 @@ def _installed_versions() -> dict[str, str | None]:
 def _make_smoke_pdf(path: Path) -> None:
     import pymupdf
 
+    source = pymupdf.open()
+    source_page = source.new_page(width=612, height=792)
+    source_page.insert_text((54, 80), "PARSEBENCH OCR COMPATIBILITY TEST", fontsize=18)
+    source_page.insert_text((54, 135), "Invoice Number: PB-2026-0716", fontsize=14)
+    source_page.insert_text((54, 190), "Customer: Artifex Software", fontsize=14)
+    source_page.insert_text((54, 245), "Document Processing    12    480", fontsize=14)
+    source_page.insert_text((54, 300), "Layout Analysis         3    120", fontsize=14)
+    source_page.insert_text((54, 355), "Grand Total                  600", fontsize=14)
+    image = source_page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False).tobytes("png")
+    source.close()
+
     document = pymupdf.open()
     page = document.new_page(width=612, height=792)
-    page.insert_text((72, 72), SMOKE_TEXT, fontsize=14)
-    page.insert_text((72, 108), "Column A", fontsize=10)
-    page.insert_text((220, 108), "Column B", fontsize=10)
-    page.insert_text((72, 132), "alpha", fontsize=10)
-    page.insert_text((220, 132), "beta", fontsize=10)
-    page.draw_rect(pymupdf.Rect(64, 90, 340, 146), color=(0, 0, 0), width=1)
-    page.draw_line((64, 118), (340, 118), color=(0, 0, 0), width=1)
-    page.draw_line((200, 90), (200, 146), color=(0, 0, 0), width=1)
+    page.insert_image(page.rect, stream=image)
     document.save(path)
     document.close()
 
@@ -79,12 +83,6 @@ def run_compatibility_check() -> dict[str, Any]:
 
     import pymupdf4llm
 
-    if getattr(pymupdf4llm, "_use_layout", True) is not True:
-        raise RuntimeError("PyMuPDF4LLM imported, but Layout mode is disabled")
-
-    if not callable(getattr(pymupdf, "_get_layout", None)):
-        raise RuntimeError("pymupdf.layout.activate() did not install the PyMuPDF layout callback")
-
     with tempfile.TemporaryDirectory(prefix="parsebench-pymupdf-compat-") as temp_dir:
         smoke_pdf = Path(temp_dir) / "compatibility.pdf"
         _make_smoke_pdf(smoke_pdf)
@@ -92,8 +90,9 @@ def run_compatibility_check() -> dict[str, Any]:
             smoke_pdf,
             page_chunks=True,
             show_progress=False,
-            use_ocr=False,
-            ocr_dpi=150,
+            use_ocr=True,
+            force_ocr=True,
+            ocr_dpi=200,
         )
 
     if not isinstance(chunks, list) or len(chunks) != 1:
@@ -104,8 +103,17 @@ def run_compatibility_check() -> dict[str, Any]:
         raise RuntimeError(f"Expected a dictionary page chunk, received {type(chunk).__name__}")
 
     text = chunk.get("text")
-    if not isinstance(text, str) or SMOKE_TEXT not in text:
-        raise RuntimeError("PyMuPDF4LLM output did not contain the compatibility marker text")
+    if not isinstance(text, str):
+        raise RuntimeError("End-to-end Layout/OCR check did not return text")
+
+    normalized_text = text.upper()
+    missing_markers = [marker for marker in SMOKE_MARKERS if marker not in normalized_text]
+    if missing_markers:
+        raise RuntimeError(
+            "End-to-end Layout/OCR check did not recognize expected text "
+            f"{missing_markers!r}; extracted {len(text)} characters. "
+            "The selected source stack or OCR runtime may be incompatible."
+        )
 
     page_boxes = chunk.get("page_boxes")
     if not isinstance(page_boxes, list) or not page_boxes:
@@ -113,9 +121,10 @@ def run_compatibility_check() -> dict[str, Any]:
 
     return {
         "layout_mode": True,
+        "ocr_markers_found": list(SMOKE_MARKERS),
         "page_box_count": len(page_boxes),
         "page_chunk_count": len(chunks),
-        "smoke_text_found": True,
+        "extracted_character_count": len(text),
     }
 
 
