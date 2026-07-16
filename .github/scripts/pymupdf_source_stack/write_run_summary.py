@@ -36,7 +36,7 @@ def main() -> int:
         f"- **Test size:** {markdown_cell(env('RUN_SCOPE_SELECTION'))}",
         f"- **Document category:** {markdown_cell(env('GROUP_SELECTION'))}",
         f"- **Pipeline:** {markdown_cell(env('PIPELINE'))}",
-        "- **Dataset download:** fresh, pinned to the exact commit shown below",
+        "- **Dataset download:** immutable SHA cache; downloads only on a cache miss",
         "- **MuPDF:** selected automatically by the chosen PyMuPDF revision",
         "",
         "| Component | Repository | Requested selection | Exact commit used |",

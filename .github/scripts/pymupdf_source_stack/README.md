@@ -14,10 +14,11 @@ artifact.
 
 Each script is a small command with one responsibility. `resolve_dataset.py`
 resolves the selected Hugging Face branch to a full commit SHA, and
-`benchmark.py download` always downloads that immutable snapshot into a clean
-directory. Inputs supplied by the workflow are passed through environment
-variables, while values needed by later steps are written using the standard
-`GITHUB_OUTPUT` and `GITHUB_STEP_SUMMARY` files.
+`benchmark.py download` reuses only a complete cached snapshot whose internal
+revision marker matches that SHA. A missing, stale, or incomplete snapshot is
+removed and downloaded again. Inputs supplied by the workflow are passed
+through environment variables, while values needed by later steps are written
+using the standard `GITHUB_OUTPUT` and `GITHUB_STEP_SUMMARY` files.
 
 Run the local checks with:
 

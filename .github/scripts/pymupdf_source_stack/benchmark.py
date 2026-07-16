@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 from pathlib import Path
 
 from common import env
+
+DATASET_MARKER = ".parsebench-dataset-revision.json"
 
 
 def run(*arguments: str) -> None:
@@ -25,12 +28,25 @@ def download() -> None:
     from parse_bench.data.download import is_dataset_ready
 
     data_dir = Path(env("DATA_DIR"))
-    if data_dir.exists():
-        shutil.rmtree(data_dir)
-
     repository = env("DATASET_REPOSITORY")
     revision = env("DATASET_SHA")
-    print(f"Downloading fresh dataset snapshot: {repository}@{revision}")
+    marker_path = data_dir / DATASET_MARKER
+    expected_marker = {"repository": repository, "resolved_sha": revision}
+
+    try:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        marker = None
+
+    if marker == expected_marker and is_dataset_ready(data_dir):
+        print(f"Reusing cached immutable dataset snapshot: {repository}@{revision}")
+        return
+
+    if data_dir.exists():
+        print("Cached dataset is absent, incomplete, or for a different revision; downloading it again.")
+        shutil.rmtree(data_dir)
+
+    print(f"Downloading immutable dataset snapshot: {repository}@{revision}")
     snapshot_download(
         repo_id=repository,
         repo_type="dataset",
@@ -40,6 +56,7 @@ def download() -> None:
     )
     if not is_dataset_ready(data_dir):
         raise SystemExit(f"Dataset snapshot {repository}@{revision} is incomplete at {data_dir}")
+    marker_path.write_text(json.dumps(expected_marker, indent=2) + "\n", encoding="utf-8")
 
 
 def inference() -> None:

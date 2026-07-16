@@ -141,6 +141,41 @@ def test_dataset_download_is_fresh_and_uses_exact_sha(tmp_path: Path, monkeypatc
 
     assert call["revision"] == sha
     assert call["force_download"] is True
+    marker = json.loads((data_dir / benchmark.DATASET_MARKER).read_text())
+    assert marker == {
+        "repository": "llamaindex/ParseBench",
+        "resolved_sha": sha,
+    }
+
+
+def test_dataset_download_reuses_complete_matching_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import parse_bench.data.download
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    sha = "c" * 40
+    marker = {
+        "repository": "llamaindex/ParseBench",
+        "resolved_sha": sha,
+    }
+    (data_dir / benchmark.DATASET_MARKER).write_text(json.dumps(marker), encoding="utf-8")
+
+    def unexpected_download(**kwargs: object) -> None:
+        pytest.fail(f"Exact cached revision should be reused, got download arguments {kwargs}")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(snapshot_download=unexpected_download),
+    )
+    monkeypatch.setattr(parse_bench.data.download, "is_dataset_ready", lambda path: True)
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+    monkeypatch.setenv("DATASET_REPOSITORY", "llamaindex/ParseBench")
+    monkeypatch.setenv("DATASET_SHA", sha)
+
+    benchmark.download()
+
+    assert data_dir.exists()
 
 
 def _write_report(path: Path, *, total: int, metrics: dict[str, float]) -> None:

@@ -105,6 +105,13 @@ jobs:
           RUN_SCOPE: ${{ steps.config.outputs.run_scope }}
         run: python3 "$WORKFLOW_SCRIPTS/resolve_dataset.py"
 
+      - name: Restore immutable ParseBench dataset cache
+        id: dataset-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.config.outputs.data_dir }}
+          key: parsebench-dataset-${{ runner.os }}-${{ steps.dataset.outputs.branch }}-${{ steps.dataset.outputs.sha }}
+
       - name: Checkout PyMuPDF
         uses: actions/checkout@v4
         with:
@@ -212,7 +219,7 @@ jobs:
             --pymupdf4llm-ref "$PYMUPDF4LLM_REF" \
             --pymupdf4llm-sha "${{ steps.sources.outputs.llm_sha }}"
 
-      - name: Download fresh versioned ParseBench dataset
+      - name: Prepare versioned ParseBench dataset
         env:
           DATA_DIR: ${{ steps.config.outputs.data_dir }}
           DATASET_REPOSITORY: ${{ steps.dataset.outputs.repository }}
