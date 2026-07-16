@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 720
     container:
-      image: ghcr.io/pymupdf/parsebench-source-stack-env@sha256:ffc187e250ab4a1f3f70f1487460eef9e54ca5d2e63f64f8cc4fd2f18a9b5696
+      image: ghcr.io/pymupdf/parsebench-source-stack-env@sha256:be78034c9188ad341b8d02d34d1702e3d8a870c47dc65a261e3d972718d26601
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -126,7 +126,7 @@ jobs:
             echo "## Container environment"
             echo
             echo "- Image: \`ghcr.io/pymupdf/parsebench-source-stack-env\`"
-            echo "- Digest: \`sha256:ffc187e250ab4a1f3f70f1487460eef9e54ca5d2e63f64f8cc4fd2f18a9b5696\`"
+            echo "- Digest: \`sha256:be78034c9188ad341b8d02d34d1702e3d8a870c47dc65a261e3d972718d26601\`"
             echo "- Python: \`$(python --version)\`"
             echo "- Tesseract package: \`$(dpkg-query -W -f='${Version}' tesseract-ocr)\`"
             echo
