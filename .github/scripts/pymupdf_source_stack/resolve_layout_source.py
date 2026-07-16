@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 from common import LAYOUT_REPOSITORIES, env, write_github_outputs, write_json
 
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
+HTTP_STATUS = re.compile(r"HTTP (\d{3})")
 
 
 def resolve_commit_with_git(repository: str, requested_ref: str, token: str) -> str | None:
@@ -105,13 +106,56 @@ def record_source_request(output_dir: Path, repository: str, requested_ref: str,
     write_json(path, request)
 
 
+def record_github_service_failure(
+    output_dir: Path,
+    repository: str,
+    requested_ref: str,
+    error: SystemExit,
+) -> bool:
+    """Record an actionable diagnostic for a transient GitHub API failure."""
+    match = HTTP_STATUS.search(str(error))
+    if match is None or int(match.group(1)) < 500:
+        return False
+
+    status = int(match.group(1))
+    message = (
+        f"GitHub's REST API was temporarily unavailable (HTTP {status}) while resolving "
+        f"{repository}@{requested_ref}. This is an external GitHub service error, not a "
+        "PyMuPDF source compatibility failure."
+    )
+    write_json(
+        output_dir / "_failure.json",
+        {
+            "title": "GitHub API temporarily unavailable",
+            "error": message,
+            "component": "GitHub REST API",
+            "repository": repository,
+            "requested_ref": requested_ref,
+            "http_status": status,
+            "details": (
+                "Source resolution could not finish, so compatibility checks and benchmark "
+                "execution were skipped. Retry the workflow after GitHub's API service recovers."
+            ),
+        },
+    )
+    return True
+
+
 def main() -> int:
     requested_ref = env("PYMUPDF_LAYOUT_REF").strip()
     output_dir = Path(env("OUTPUT_DIR"))
     token = env("GITHUB_TOKEN")
 
     for repository in LAYOUT_REPOSITORIES:
-        sha = resolve_commit(repository, requested_ref, token)
+        try:
+            sha = resolve_commit(repository, requested_ref, token)
+        except SystemExit as error:
+            if record_github_service_failure(output_dir, repository, requested_ref, error):
+                raise SystemExit(
+                    f"GitHub's REST API was temporarily unavailable while resolving "
+                    f"{repository}@{requested_ref}; retry this workflow later."
+                ) from error
+            raise
         if sha is None:
             continue
 

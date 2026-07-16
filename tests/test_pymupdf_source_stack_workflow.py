@@ -145,6 +145,28 @@ def test_layout_resolution_reports_missing_ref(tmp_path: Path, monkeypatch: pyte
     assert failure["title"] == "Cannot resolve PyMuPDF Layout source"
 
 
+def test_layout_resolution_records_github_service_outage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_dir = _layout_resolution_environment(tmp_path, monkeypatch)
+
+    def unavailable(repository: str, ref: str, token: str) -> None:
+        raise SystemExit(f"GitHub rejected {repository}@{ref}: HTTP 503")
+
+    monkeypatch.setattr(resolve_layout_source, "resolve_commit", unavailable)
+
+    with pytest.raises(SystemExit, match="retry this workflow later"):
+        resolve_layout_source.main()
+
+    failure = json.loads((output_dir / "_failure.json").read_text())
+    assert failure["title"] == "GitHub API temporarily unavailable"
+    assert failure["http_status"] == 503
+    assert failure["repository"] == "ArtifexSoftware/pymupdf_layout"
+    assert failure["requested_ref"] == "main"
+    assert "not a PyMuPDF source compatibility failure" in failure["error"]
+    assert "benchmark execution were skipped" in failure["details"]
+
+
 def test_evaluation_groups_expands_text_categories(tmp_path: Path) -> None:
     for group in ("chart", "text"):
         group_dir = tmp_path / group
