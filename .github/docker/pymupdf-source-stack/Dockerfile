@@ -35,10 +35,21 @@ RUN sed -i "/^URIs:/a Snapshot: ${UBUNTU_SNAPSHOT}" /etc/apt/sources.list.d/ubun
         curl \
         file \
         git \
+        libbz2-1.0 \
+        libexpat1 \
+        libffi8 \
+        libgdbm-compat4t64 \
+        libgdbm6t64 \
         libgif7=5.2.2-1ubuntu1 \
         libgomp1 \
         liblept5=1.82.0-3build4 \
+        liblzma5 \
+        libncursesw6 \
+        libreadline8t64 \
+        libsqlite3-0 \
+        libssl3t64 \
         libtesseract5=5.3.4-1build5 \
+        libuuid1 \
         locales \
         pkg-config \
         swig=4.2.0-2ubuntu1 \
@@ -46,6 +57,7 @@ RUN sed -i "/^URIs:/a Snapshot: ${UBUNTU_SNAPSHOT}" /etc/apt/sources.list.d/ubun
         tesseract-ocr-eng=1:4.1.0-2 \
         tesseract-ocr-osd=1:4.1.0-2 \
         tzdata \
+        zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 # setup-python selected CPython 3.12.13 in the reference run. Copy the exact

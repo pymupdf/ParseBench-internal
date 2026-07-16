@@ -57,7 +57,7 @@ jobs:
             test "$(dpkg-query -W -f="\${Version}" tesseract-ocr)" = "5.3.4-1build5"
             test "$(dpkg-query -W -f="\${Version}" tesseract-ocr-eng)" = "1:4.1.0-2"
             tesseract --list-langs | grep -Fx eng
-            python -c "import ctypes, sqlite3, ssl; print(ssl.OPENSSL_VERSION)"
+            python -c "import bz2, ctypes, curses, dbm, lzma, readline, sqlite3, ssl, uuid, zlib; print(ssl.OPENSSL_VERSION)"
             cc --version
             swig -version
             cat /usr/local/share/parsebench/environment.txt
