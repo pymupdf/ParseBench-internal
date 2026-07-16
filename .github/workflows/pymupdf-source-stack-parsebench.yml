@@ -18,7 +18,7 @@ on:
         default: main
         type: string
       pymupdf_ref:
-        description: "All 3 fields: version 1.28.0; branch main; or full 40-character commit SHA, e.g. e9cdfc9e7fe3260efcc9d28713903f075ab05bce. Never paste a GitHub URL."
+        description: "All 3 fields: version 1.28.0; branch main; or full 40-character commit SHA, e.g. e9cdfc9e7fe3260efcc9d28713903f075ab05bce."
         required: true
         default: "1.28.0"
         type: string
