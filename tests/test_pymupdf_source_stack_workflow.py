@@ -28,6 +28,7 @@ def _load_module(name: str):
 configure = _load_module("configure")
 benchmark = _load_module("benchmark")
 resolve_dataset = _load_module("resolve_dataset")
+resolve_layout_source = _load_module("resolve_layout_source")
 results_summary = _load_module("write_results_summary")
 
 
@@ -72,7 +73,76 @@ def test_configure_maps_friendly_inputs_and_records_request(tmp_path: Path, monk
 
     request = json.loads((tmp_path / "parsebench-output" / "_source_request.json").read_text())
     assert request["pymupdf"] == {"ref": "main", "repository": "pymupdf/PyMuPDF"}
-    assert request["pymupdf_layout"]["repository"] == "ArtifexSoftware/sce"
+    assert request["pymupdf_layout"] == {
+        "ref": "1.28.0",
+        "repositories": ["ArtifexSoftware/pymupdf_layout", "ArtifexSoftware/sce"],
+    }
+
+
+def _layout_resolution_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    github_output = tmp_path / "github-output"
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    (output_dir / "_source_request.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setenv("OUTPUT_DIR", str(output_dir))
+    monkeypatch.setenv("PYMUPDF_LAYOUT_REF", "main")
+    return output_dir
+
+
+def test_layout_resolution_prefers_current_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_dir = _layout_resolution_environment(tmp_path, monkeypatch)
+    sha = "a" * 40
+    calls: list[str] = []
+
+    def resolve(repository: str, requested_ref: str, token: str) -> str | None:
+        calls.append(repository)
+        assert requested_ref == "main"
+        assert token == "test-token"
+        return sha
+
+    monkeypatch.setattr(resolve_layout_source, "resolve_commit", resolve)
+
+    assert resolve_layout_source.main() == 0
+    assert calls == ["ArtifexSoftware/pymupdf_layout"]
+    request = json.loads((output_dir / "_source_request.json").read_text())
+    assert request["pymupdf_layout"] == {
+        "ref": "main",
+        "repository": "ArtifexSoftware/pymupdf_layout",
+        "resolved_sha": sha,
+    }
+
+
+def test_layout_resolution_falls_back_to_legacy_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_dir = _layout_resolution_environment(tmp_path, monkeypatch)
+    sha = "b" * 40
+
+    def resolve(repository: str, requested_ref: str, token: str) -> str | None:
+        return sha if repository == "ArtifexSoftware/sce" else None
+
+    monkeypatch.setattr(resolve_layout_source, "resolve_commit", resolve)
+
+    assert resolve_layout_source.main() == 0
+    source = json.loads((output_dir / "_layout_source.json").read_text())
+    assert source == {
+        "repository": "ArtifexSoftware/sce",
+        "requested_ref": "main",
+        "resolved_sha": sha,
+    }
+
+
+def test_layout_resolution_reports_missing_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_dir = _layout_resolution_environment(tmp_path, monkeypatch)
+    monkeypatch.setattr(resolve_layout_source, "resolve_commit", lambda repository, ref, token: None)
+
+    with pytest.raises(SystemExit, match="was not found"):
+        resolve_layout_source.main()
+
+    failure = json.loads((output_dir / "_failure.json").read_text())
+    assert failure["title"] == "Cannot resolve PyMuPDF Layout source"
 
 
 def test_evaluation_groups_expands_text_categories(tmp_path: Path) -> None:

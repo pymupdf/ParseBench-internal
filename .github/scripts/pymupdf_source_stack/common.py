@@ -9,6 +9,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+LAYOUT_REPOSITORIES = (
+    "ArtifexSoftware/pymupdf_layout",
+    "ArtifexSoftware/sce",
+)
+
 COMPONENTS = {
     "pymupdf": {
         "label": "PyMuPDF",
@@ -17,7 +22,7 @@ COMPONENTS = {
     },
     "pymupdf_layout": {
         "label": "PyMuPDF Layout",
-        "repository": "ArtifexSoftware/sce",
+        "repository": LAYOUT_REPOSITORIES[0],
         "root": Path(".source/pymupdf-layout"),
     },
     "pymupdf4llm": {

@@ -14,7 +14,10 @@ artifact.
 
 Each script is a small command with one responsibility. `resolve_dataset.py`
 resolves the `current` Hugging Face branch or validates a user-supplied full
-commit SHA, and
+commit SHA. `resolve_layout_source.py` resolves a PyMuPDF Layout selection
+against the current `ArtifexSoftware/pymupdf_layout` repository first, then
+falls back to the legacy `ArtifexSoftware/sce` repository so one workflow
+input continues to support both source histories. Finally,
 `benchmark.py download` reuses only a complete cached snapshot whose internal
 revision marker matches that SHA. A missing, stale, or incomplete snapshot is
 removed and downloaded again. Inputs supplied by the workflow are passed

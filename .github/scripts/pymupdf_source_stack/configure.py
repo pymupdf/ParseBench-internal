@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from common import COMPONENTS, env, write_github_outputs, write_json
+from common import COMPONENTS, LAYOUT_REPOSITORIES, env, write_github_outputs, write_json
 
 RUN_SCOPES = {
     "Quick test (15 cases)": ("test", "data/test"),
@@ -65,6 +65,10 @@ def main() -> int:
     request = {
         name: {"repository": component["repository"], "ref": refs[name]}
         for name, component in COMPONENTS.items()
+    }
+    request["pymupdf_layout"] = {
+        "ref": refs["pymupdf_layout"],
+        "repositories": list(LAYOUT_REPOSITORIES),
     }
     write_json(output_dir / "_source_request.json", request)
     write_github_outputs(

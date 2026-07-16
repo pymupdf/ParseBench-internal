@@ -28,7 +28,7 @@ on:
         default: "1.28.0"
         type: string
       pymupdf_layout_ref:
-        description: "PyMuPDF Layout selection. Standard: 1.28.0"
+        description: "PyMuPDF Layout version, branch or commit. Current development: main; standard release: 1.28.0."
         required: true
         default: "1.28.0"
         type: string
@@ -112,6 +112,14 @@ jobs:
           RUN_SCOPE_SELECTION: ${{ inputs.run_scope }}
         run: python3 "$WORKFLOW_SCRIPTS/configure.py"
 
+      - name: Resolve PyMuPDF Layout repository and commit
+        id: layout-source
+        env:
+          GITHUB_TOKEN: ${{ secrets.PYMUPDF_SOURCE_TOKEN || github.token }}
+          OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
+          PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
+        run: python3 "$WORKFLOW_SCRIPTS/resolve_layout_source.py"
+
       - name: Record and verify pinned container environment
         env:
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
@@ -160,8 +168,8 @@ jobs:
       - name: Checkout PyMuPDF Layout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          repository: ArtifexSoftware/sce
-          ref: ${{ inputs.pymupdf_layout_ref }}
+          repository: ${{ steps.layout-source.outputs.repository }}
+          ref: ${{ steps.layout-source.outputs.sha }}
           path: .source/pymupdf-layout
           fetch-depth: 1
           persist-credentials: false
@@ -194,6 +202,7 @@ jobs:
           GROUP_SELECTION: ${{ inputs.group }}
           PYMUPDF4LLM_REF: ${{ inputs.pymupdf4llm_ref }}
           PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
+          PYMUPDF_LAYOUT_REPOSITORY: ${{ steps.layout-source.outputs.repository }}
           PYMUPDF_REF: ${{ inputs.pymupdf_ref }}
           RUN_SCOPE_SELECTION: ${{ inputs.run_scope }}
         run: python3 "$WORKFLOW_SCRIPTS/write_run_summary.py"
@@ -240,6 +249,7 @@ jobs:
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
           PYMUPDF4LLM_REF: ${{ inputs.pymupdf4llm_ref }}
           PYMUPDF_LAYOUT_REF: ${{ inputs.pymupdf_layout_ref }}
+          PYMUPDF_LAYOUT_REPOSITORY: ${{ steps.layout-source.outputs.repository }}
           PYMUPDF_REF: ${{ inputs.pymupdf_ref }}
         run: |
           .venv/bin/python "$WORKFLOW_SCRIPTS/check_compatibility.py" \
@@ -247,7 +257,7 @@ jobs:
             --pymupdf-repository pymupdf/PyMuPDF \
             --pymupdf-ref "$PYMUPDF_REF" \
             --pymupdf-sha "${{ steps.sources.outputs.pymupdf_sha }}" \
-            --pymupdf-layout-repository ArtifexSoftware/sce \
+            --pymupdf-layout-repository "$PYMUPDF_LAYOUT_REPOSITORY" \
             --pymupdf-layout-ref "$PYMUPDF_LAYOUT_REF" \
             --pymupdf-layout-sha "${{ steps.sources.outputs.layout_sha }}" \
             --pymupdf4llm-repository pymupdf/pymupdf4llm \

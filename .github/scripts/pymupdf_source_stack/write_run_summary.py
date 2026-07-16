@@ -17,7 +17,9 @@ def main() -> int:
         *(
             (
                 str(component["label"]),
-                str(component["repository"]),
+                env("PYMUPDF_LAYOUT_REPOSITORY")
+                if name == "pymupdf_layout"
+                else str(component["repository"]),
                 refs[name],
                 git_sha(component["root"]),
             )
