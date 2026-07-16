@@ -58,6 +58,7 @@ RUN sed -i "/^URIs:/a Snapshot: ${UBUNTU_SNAPSHOT}" /etc/apt/sources.list.d/ubun
         tesseract-ocr-osd=1:4.1.0-2 \
         tzdata \
         zlib1g \
+        zstd \
     && rm -rf /var/lib/apt/lists/*
 
 # setup-python selected CPython 3.12.13 in the reference run. Copy the exact
