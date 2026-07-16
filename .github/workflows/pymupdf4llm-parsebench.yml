@@ -16,6 +16,11 @@ on:
         options:
           - full
           - test
+      dataset_version:
+        description: "Dataset version: current, or a full 40-character Hugging Face commit SHA."
+        required: true
+        default: current
+        type: string
       group:
         description: "Benchmark group"
         required: true
@@ -108,6 +113,7 @@ jobs:
       - name: Resolve exact ParseBench dataset commit
         id: dataset
         env:
+          DATASET_REF: ${{ inputs.dataset_version }}
           OUTPUT_DIR: ${{ steps.config.outputs.output_dir }}
           RUN_SCOPE: ${{ steps.config.outputs.run_scope }}
         run: python3 "$WORKFLOW_SCRIPTS/resolve_dataset.py"
@@ -124,6 +130,7 @@ jobs:
           DATASET_BRANCH: ${{ steps.dataset.outputs.branch }}
           DATASET_COMMIT_URL: ${{ steps.dataset.outputs.commit_url }}
           DATASET_REPOSITORY: ${{ steps.dataset.outputs.repository }}
+          DATASET_REQUESTED_REF: ${{ steps.dataset.outputs.requested_ref }}
           DATASET_SHA: ${{ steps.dataset.outputs.sha }}
         run: |
           {
@@ -131,6 +138,7 @@ jobs:
             echo
             echo "- Repository: \`${DATASET_REPOSITORY}\`"
             echo "- Selected branch: \`${DATASET_BRANCH}\`"
+            echo "- Requested version: \`${DATASET_REQUESTED_REF}\`"
             echo "- Exact commit: [\`${DATASET_SHA}\`](${DATASET_COMMIT_URL})"
             echo "- Download: immutable SHA cache; downloads only on a cache miss"
             echo
@@ -191,6 +199,7 @@ jobs:
           DATASET_BRANCH: ${{ steps.dataset.outputs.branch }}
           DATASET_COMMIT_URL: ${{ steps.dataset.outputs.commit_url }}
           DATASET_REPOSITORY: ${{ steps.dataset.outputs.repository }}
+          DATASET_REQUESTED_REF: ${{ steps.dataset.outputs.requested_ref }}
           DATASET_SHA: ${{ steps.dataset.outputs.sha }}
           DESTINATION: ${{ steps.config.outputs.destination }}
           GROUP: ${{ steps.config.outputs.group }}
@@ -217,6 +226,7 @@ jobs:
             "dataset": {
               "repository": "${DATASET_REPOSITORY}",
               "branch": "${DATASET_BRANCH}",
+              "requested_ref": "${DATASET_REQUESTED_REF}",
               "resolved_sha": "${DATASET_SHA}",
               "commit_url": "${DATASET_COMMIT_URL}"
             },

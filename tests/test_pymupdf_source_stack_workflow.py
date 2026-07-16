@@ -99,6 +99,7 @@ def test_resolve_dataset_records_immutable_revision(tmp_path: Path, monkeypatch:
     output_dir = tmp_path / "output"
     sha = "a" * 40
     monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
+    monkeypatch.setenv("DATASET_REF", "current")
     monkeypatch.setenv("OUTPUT_DIR", str(output_dir))
     monkeypatch.setenv("RUN_SCOPE", "test")
     monkeypatch.setattr(resolve_dataset, "resolve_branch", lambda repository, branch: sha)
@@ -110,7 +111,39 @@ def test_resolve_dataset_records_immutable_revision(tmp_path: Path, monkeypatch:
     assert outputs["sha"] == sha
     dataset = json.loads((output_dir / "_dataset.json").read_text())
     assert dataset["repository"] == "llamaindex/ParseBench"
+    assert dataset["requested_ref"] == "current"
     assert dataset["resolved_sha"] == sha
+
+
+def test_resolve_dataset_accepts_existing_full_commit_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    github_output = tmp_path / "github-output"
+    sha = "d" * 40
+    monkeypatch.setenv("DATASET_REF", sha.upper())
+    monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path / "output"))
+    monkeypatch.setenv("RUN_SCOPE", "full")
+    monkeypatch.setattr(resolve_dataset, "validate_commit", lambda repository, revision: revision)
+    monkeypatch.setattr(
+        resolve_dataset,
+        "resolve_branch",
+        lambda repository, branch: pytest.fail("Explicit SHA must not resolve the current branch"),
+    )
+
+    assert resolve_dataset.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in github_output.read_text().splitlines())
+    assert outputs["requested_ref"] == sha
+    assert outputs["sha"] == sha
+
+
+def test_resolve_dataset_rejects_ambiguous_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATASET_REF", "main")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "github-output"))
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path / "output"))
+    monkeypatch.setenv("RUN_SCOPE", "full")
+
+    with pytest.raises(SystemExit, match="full 40-character commit SHA"):
+        resolve_dataset.main()
 
 
 def test_dataset_download_is_fresh_and_uses_exact_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

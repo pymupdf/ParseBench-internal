@@ -32,6 +32,7 @@ def main() -> int:
             "branch": env("DATASET_BRANCH"),
             "commit_url": env("DATASET_COMMIT_URL"),
             "repository": env("DATASET_REPOSITORY"),
+            "requested_ref": env("DATASET_REQUESTED_REF"),
             "resolved_sha": env("DATASET_SHA"),
         },
         "source_stack": compatibility,

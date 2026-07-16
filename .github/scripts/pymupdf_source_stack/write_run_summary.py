@@ -26,7 +26,7 @@ def main() -> int:
         (
             "ParseBench dataset",
             env("DATASET_REPOSITORY"),
-            env("DATASET_BRANCH"),
+            env("DATASET_REQUESTED_REF"),
             env("DATASET_SHA"),
         ),
     ]

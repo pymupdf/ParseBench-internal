@@ -13,7 +13,8 @@ summary. `_benchmark_scores.json` records the same values in the uploaded
 artifact.
 
 Each script is a small command with one responsibility. `resolve_dataset.py`
-resolves the selected Hugging Face branch to a full commit SHA, and
+resolves the `current` Hugging Face branch or validates a user-supplied full
+commit SHA, and
 `benchmark.py download` reuses only a complete cached snapshot whose internal
 revision marker matches that SHA. A missing, stale, or incomplete snapshot is
 removed and downloaded again. Inputs supplied by the workflow are passed
