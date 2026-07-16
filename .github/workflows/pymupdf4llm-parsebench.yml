@@ -117,7 +117,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.config.outputs.data_dir }}
-          key: parsebench-dataset-${{ runner.os }}-${{ steps.dataset.outputs.branch }}-${{ steps.dataset.outputs.sha }}
+          key: parsebench-dataset-${{ steps.dataset.outputs.sha }}
 
       - name: Add dataset version to workflow summary
         env:
