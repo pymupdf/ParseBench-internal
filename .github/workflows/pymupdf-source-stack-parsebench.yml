@@ -3,7 +3,7 @@ name: ParseBench Version Lab
 run-name: >-
   ${{
     inputs.all_latest &&
-    'All latest commits' ||
+    'All latest PyMuPDF commits' ||
     inputs.pymupdf_ref == '1.28.0' &&
     inputs.pymupdf_layout_ref == '1.28.0' &&
     inputs.pymupdf4llm_ref == '1.28.0' &&
@@ -15,12 +15,12 @@ on:
   workflow_dispatch:
     inputs:
       all_latest:
-        description: "Use the latest commits from every repository. When enabled, all version and commit inputs below are ignored."
+        description: "Use latest PyMuPDF, Layout and PyMuPDF4LLM commits. Their version and commit inputs are ignored."
         required: true
         default: false
         type: boolean
       dataset_version:
-        description: "Dataset version: current, or a full 40-character Hugging Face commit SHA. Ignored with all latest."
+        description: "Dataset version: current, or a full 40-character Hugging Face commit SHA."
         required: true
         default: current
         type: string

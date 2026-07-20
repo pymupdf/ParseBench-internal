@@ -84,7 +84,7 @@ def test_configure_maps_friendly_inputs_and_records_request(tmp_path: Path, monk
     }
 
 
-def test_configure_all_latest_overrides_version_and_commit_inputs(
+def test_configure_all_latest_overrides_source_inputs_but_preserves_dataset_version(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     github_output = tmp_path / "github-output"
@@ -110,7 +110,7 @@ def test_configure_all_latest_overrides_version_and_commit_inputs(
 
     outputs = dict(line.split("=", 1) for line in github_output.read_text().splitlines())
     assert outputs["all_latest"] == "true"
-    assert outputs["dataset_ref"] == "current"
+    assert outputs["dataset_ref"] == "d" * 40
     assert outputs["pymupdf_ref"] == "main"
     assert outputs["pymupdf_layout_ref"] == "main"
     assert outputs["pymupdf4llm_ref"] == "main"

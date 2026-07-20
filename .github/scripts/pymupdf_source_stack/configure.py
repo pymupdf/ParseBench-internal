@@ -21,7 +21,6 @@ GROUPS = {
     "Text formatting": "text_formatting",
 }
 LATEST_REFS = {
-    "dataset": "current",
     "pymupdf": "main",
     "pymupdf_layout": "main",
     "pymupdf4llm": "main",
@@ -52,7 +51,7 @@ def main() -> int:
         "pymupdf_layout": env("PYMUPDF_LAYOUT_REF"),
         "pymupdf4llm": env("PYMUPDF4LLM_REF"),
     }
-    refs = LATEST_REFS if all_latest else requested_refs
+    refs = requested_refs | LATEST_REFS if all_latest else requested_refs
 
     output_dir = Path(env("RUNNER_TEMP")) / "parsebench-output"
     output_dir.mkdir(parents=True, exist_ok=True)
