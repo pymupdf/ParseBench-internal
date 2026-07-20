@@ -7,7 +7,7 @@ FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebff
 ARG UBUNTU_SNAPSHOT=20260716T205900Z
 ARG UV_VERSION=0.11.29
 
-LABEL org.opencontainers.image.source="https://github.com/pymupdf/ParseBench-internal"
+LABEL org.opencontainers.image.source="https://github.com/pymupdf/ParseBench-Version-Lab"
 LABEL org.opencontainers.image.description="Reproducible native build and benchmark environment for the ParseBench PyMuPDF source stack"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
@@ -90,4 +90,4 @@ RUN mkdir -p /usr/local/share/parsebench \
         "leptonica=1.82.0-3build4" \
         > /usr/local/share/parsebench/environment.txt
 
-WORKDIR /__w/ParseBench-internal/ParseBench-internal
+WORKDIR /__w/ParseBench-Version-Lab/ParseBench-Version-Lab
