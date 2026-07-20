@@ -20,6 +20,12 @@ GROUPS = {
     "Text content": "text_content",
     "Text formatting": "text_formatting",
 }
+LATEST_REFS = {
+    "dataset": "current",
+    "pymupdf": "main",
+    "pymupdf_layout": "main",
+    "pymupdf4llm": "main",
+}
 
 
 def safe_ref(value: str) -> str:
@@ -39,11 +45,14 @@ def main() -> int:
     benchmark_ref = env("BENCHMARK_REF")
     run_scope, data_dir = selected(RUN_SCOPES, env("RUN_SCOPE_SELECTION"), "test size")
     group = selected(GROUPS, env("GROUP_SELECTION"), "document category")
-    refs = {
+    all_latest = env("ALL_LATEST").strip().lower() == "true"
+    requested_refs = {
+        "dataset": env("DATASET_REF"),
         "pymupdf": env("PYMUPDF_REF"),
         "pymupdf_layout": env("PYMUPDF_LAYOUT_REF"),
         "pymupdf4llm": env("PYMUPDF4LLM_REF"),
     }
+    refs = LATEST_REFS if all_latest else requested_refs
 
     output_dir = Path(env("RUNNER_TEMP")) / "parsebench-output"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -73,12 +82,17 @@ def main() -> int:
     write_json(output_dir / "_source_request.json", request)
     write_github_outputs(
         {
+            "all_latest": str(all_latest).lower(),
             "artifact_name": artifact_name,
             "benchmark_ref": benchmark_ref,
             "data_dir": data_dir,
+            "dataset_ref": refs["dataset"],
             "destination": destination,
             "group": group,
             "output_dir": str(output_dir),
+            "pymupdf4llm_ref": refs["pymupdf4llm"],
+            "pymupdf_layout_ref": refs["pymupdf_layout"],
+            "pymupdf_ref": refs["pymupdf"],
             "run_scope": run_scope,
         }
     )

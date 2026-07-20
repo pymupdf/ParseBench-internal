@@ -145,8 +145,11 @@ def main() -> int:
     requested_ref = env("PYMUPDF_LAYOUT_REF").strip()
     output_dir = Path(env("OUTPUT_DIR"))
     token = env("GITHUB_TOKEN")
+    repositories = LAYOUT_REPOSITORIES
+    if env("PREFER_CURRENT_REPOSITORY").strip().lower() == "true":
+        repositories = tuple(reversed(repositories))
 
-    for repository in LAYOUT_REPOSITORIES:
+    for repository in repositories:
         try:
             sha = resolve_commit(repository, requested_ref, token)
         except SystemExit as error:

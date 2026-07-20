@@ -48,7 +48,9 @@ def test_safe_ref_produces_bounded_path_component(value: str, expected: str) -> 
 def test_configure_maps_friendly_inputs_and_records_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     github_output = tmp_path / "github-output"
     values = {
+        "ALL_LATEST": "false",
         "BENCHMARK_REF": "main",
+        "DATASET_REF": "current",
         "GCS_PREFIX": "/parsebench/pymupdf_source_stack/",
         "GITHUB_OUTPUT": str(github_output),
         "GITHUB_RUN_ATTEMPT": "2",
@@ -71,6 +73,8 @@ def test_configure_maps_friendly_inputs_and_records_request(tmp_path: Path, monk
     assert outputs["group"] == "layout"
     assert outputs["artifact_name"] == "pymupdf-source-stack-123-2"
     assert "4llm-feature-llm" in outputs["destination"]
+    assert outputs["all_latest"] == "false"
+    assert outputs["pymupdf4llm_ref"] == "feature/llm"
 
     request = json.loads((tmp_path / "parsebench-output" / "_source_request.json").read_text())
     assert request["pymupdf"] == {"ref": "main", "repository": "pymupdf/PyMuPDF"}
@@ -78,6 +82,41 @@ def test_configure_maps_friendly_inputs_and_records_request(tmp_path: Path, monk
         "ref": "1.28.0",
         "repositories": ["ArtifexSoftware/sce", "ArtifexSoftware/pymupdf_layout"],
     }
+
+
+def test_configure_all_latest_overrides_version_and_commit_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    github_output = tmp_path / "github-output"
+    values = {
+        "ALL_LATEST": "true",
+        "BENCHMARK_REF": "main",
+        "DATASET_REF": "d" * 40,
+        "GCS_PREFIX": "parsebench/pymupdf_source_stack",
+        "GITHUB_OUTPUT": str(github_output),
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_RUN_ID": "456",
+        "GROUP_SELECTION": "All categories",
+        "PYMUPDF4LLM_REF": "1.28.0",
+        "PYMUPDF_LAYOUT_REF": "1.28.0",
+        "PYMUPDF_REF": "a" * 40,
+        "RUNNER_TEMP": str(tmp_path),
+        "RUN_SCOPE_SELECTION": "Quick test (15 cases)",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+
+    assert configure.main() == 0
+
+    outputs = dict(line.split("=", 1) for line in github_output.read_text().splitlines())
+    assert outputs["all_latest"] == "true"
+    assert outputs["dataset_ref"] == "current"
+    assert outputs["pymupdf_ref"] == "main"
+    assert outputs["pymupdf_layout_ref"] == "main"
+    assert outputs["pymupdf4llm_ref"] == "main"
+
+    request = json.loads((tmp_path / "parsebench-output" / "_source_request.json").read_text())
+    assert request["pymupdf"] == {"ref": "main", "repository": "pymupdf/PyMuPDF"}
 
 
 def _layout_resolution_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -88,6 +127,7 @@ def _layout_resolution_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     monkeypatch.setenv("OUTPUT_DIR", str(output_dir))
+    monkeypatch.setenv("PREFER_CURRENT_REPOSITORY", "false")
     monkeypatch.setenv("PYMUPDF_LAYOUT_REF", "main")
     return output_dir
 
@@ -133,6 +173,26 @@ def test_layout_resolution_falls_back_to_current_repository(
         "requested_ref": "main",
         "resolved_sha": sha,
     }
+
+
+def test_layout_resolution_all_latest_prefers_current_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_dir = _layout_resolution_environment(tmp_path, monkeypatch)
+    sha = "c" * 40
+    calls: list[str] = []
+    monkeypatch.setenv("PREFER_CURRENT_REPOSITORY", "true")
+
+    def resolve(repository: str, requested_ref: str, token: str) -> str | None:
+        calls.append(repository)
+        return sha
+
+    monkeypatch.setattr(resolve_layout_source, "resolve_commit", resolve)
+
+    assert resolve_layout_source.main() == 0
+    assert calls == ["ArtifexSoftware/pymupdf_layout"]
+    source = json.loads((output_dir / "_layout_source.json").read_text())
+    assert source["repository"] == "ArtifexSoftware/pymupdf_layout"
 
 
 def test_layout_resolution_treats_unprocessable_ref_as_missing(
