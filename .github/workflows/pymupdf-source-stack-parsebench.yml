@@ -248,6 +248,9 @@ jobs:
             --no-install-package pymupdf4llm
           uv pip install --python .venv "pipcl==12"
 
+      - name: Install temporary PyMuPDF4LLM branch dependency
+        run: uv pip install --python .venv "psutil==7.2.2"
+
       - name: Verify RapidOCR native runtime
         run: .venv/bin/python -c "from rapidocr_onnxruntime import RapidOCR; print(RapidOCR)"
 
