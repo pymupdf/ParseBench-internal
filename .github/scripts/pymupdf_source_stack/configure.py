@@ -25,6 +25,7 @@ LATEST_REFS = {
     "pymupdf_layout": "main",
     "pymupdf4llm": "main",
 }
+LATEST_ANY_BRANCH_REFS = dict.fromkeys(LATEST_REFS, "latest-any-branch")
 
 
 def safe_ref(value: str) -> str:
@@ -45,13 +46,21 @@ def main() -> int:
     run_scope, data_dir = selected(RUN_SCOPES, env("RUN_SCOPE_SELECTION"), "test size")
     group = selected(GROUPS, env("GROUP_SELECTION"), "document category")
     all_latest = env("ALL_LATEST").strip().lower() == "true"
+    latest_any_branch = env("LATEST_ANY_BRANCH").strip().lower() == "true"
+    if all_latest and latest_any_branch:
+        raise SystemExit("Select either all latest main-branch commits or latest commits from any branch, not both")
     requested_refs = {
         "dataset": env("DATASET_REF"),
         "pymupdf": env("PYMUPDF_REF"),
         "pymupdf_layout": env("PYMUPDF_LAYOUT_REF"),
         "pymupdf4llm": env("PYMUPDF4LLM_REF"),
     }
-    refs = requested_refs | LATEST_REFS if all_latest else requested_refs
+    if latest_any_branch:
+        refs = requested_refs | LATEST_ANY_BRANCH_REFS
+    elif all_latest:
+        refs = requested_refs | LATEST_REFS
+    else:
+        refs = requested_refs
 
     output_dir = Path(env("RUNNER_TEMP")) / "parsebench-output"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -88,6 +97,7 @@ def main() -> int:
             "dataset_ref": refs["dataset"],
             "destination": destination,
             "group": group,
+            "latest_any_branch": str(latest_any_branch).lower(),
             "output_dir": str(output_dir),
             "pymupdf4llm_ref": refs["pymupdf4llm"],
             "pymupdf_layout_ref": refs["pymupdf_layout"],

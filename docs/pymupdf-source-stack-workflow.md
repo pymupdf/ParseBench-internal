@@ -10,6 +10,19 @@ ref accepts a release tag, branch, or full commit SHA. Leave the displayed
 defaults unchanged for a standard quick test; prefer full commit SHAs for
 reproducible benchmark runs.
 
+Two optional checkboxes provide automatic source selection:
+
+- **Latest main-branch commits** selects the current `main` head in all three
+  source repositories.
+- **Latest commits from any branch** fetches every branch head and selects the
+  one with the newest commit timestamp independently in each repository. The
+  workflow records the selected branch names and pins their exact SHAs before
+  checkout. Do not select both automatic modes in the same run.
+
+Git does not store a per-branch push timestamp, so the any-branch mode measures
+recency by the branch-head commit's committer timestamp. Creating a new branch
+that points to an older commit does not make that branch the newest.
+
 Enter only the Git ref, not a GitHub URL. Examples:
 
 - Version tag: `1.28.0`
@@ -19,7 +32,8 @@ Enter only the Git ref, not a GitHub URL. Examples:
 The fixed source repositories are:
 
 - PyMuPDF: `pymupdf/PyMuPDF`
-- PyMuPDF Layout: `ArtifexSoftware/sce`
+- PyMuPDF Layout: `ArtifexSoftware/sce`, with automatic latest modes using the
+  current `ArtifexSoftware/pymupdf_layout` repository
 - PyMuPDF4LLM: `pymupdf/pymupdf4llm`
 
 Every run starts its GitHub summary with the selected test size, document

@@ -68,8 +68,30 @@ def commit_label(commits_after: int | None) -> str:
     return "Selected commit"
 
 
-def source_table(revisions: list[SourceRevision], all_latest: bool) -> list[str]:
+def source_table(
+    revisions: list[SourceRevision],
+    all_latest: bool,
+    latest_any_branch: bool = False,
+) -> list[str]:
     lines = ["### PyMuPDF source commits", ""]
+    if latest_any_branch:
+        lines.extend(
+            [
+                "The newest branch-head commit was requested from each PyMuPDF repository.",
+                "",
+                "| Component | Repository | Branch selected | Commit used | Commit date |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        lines.extend(
+            f"| {markdown_cell(revision.label)} | "
+            f"{github_link(revision.repository, revision.repository)} | "
+            f"`{markdown_cell(revision.requested_ref)}` | "
+            f"{github_link('Latest branch-head commit', revision.repository, f'/commit/{revision.sha}')} | "
+            f"{markdown_cell(revision.commit_date)} |"
+            for revision in revisions
+        )
+        return lines
     if all_latest:
         lines.extend(
             [
@@ -107,6 +129,7 @@ def source_table(revisions: list[SourceRevision], all_latest: bool) -> list[str]
 
 def main() -> int:
     all_latest = env("ALL_LATEST").strip().lower() == "true"
+    latest_any_branch = env("LATEST_ANY_BRANCH").strip().lower() == "true"
     refs = {
         "pymupdf": env("PYMUPDF_REF"),
         "pymupdf_layout": env("PYMUPDF_LAYOUT_REF"),
@@ -128,7 +151,9 @@ def main() -> int:
                 requested_ref=refs[name],
                 sha=sha,
                 commit_date=commit_date(component["root"]),
-                commits_after=None if all_latest else commits_after_main(repository, sha, token),
+                commits_after=None
+                if all_latest or latest_any_branch
+                else commits_after_main(repository, sha, token),
             )
         )
 
@@ -145,7 +170,7 @@ def main() -> int:
         "- **Dataset download:** immutable SHA cache; downloads only on a cache miss",
         "- **MuPDF:** selected automatically by the chosen PyMuPDF revision",
         "",
-        *source_table(revisions, all_latest),
+        *source_table(revisions, all_latest, latest_any_branch),
         "",
         "### Benchmark revisions",
         "",
