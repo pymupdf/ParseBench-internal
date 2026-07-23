@@ -3,6 +3,40 @@
 import importlib
 import logging
 import math
+
+# --- temporary OOM forensics (run branch only): once RSS crosses 2 GB, dump
+# RSS + all-thread Python stacks to stderr every 2s so the last dump before a
+# cgroup SIGKILL identifies the allocation site. Linux-only; no-op elsewhere.
+import faulthandler as _fh
+import sys as _sys
+import threading as _th
+import time as _time
+
+
+def _rss_gb():
+    try:
+        with open("/proc/self/status", encoding="ascii", errors="ignore") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1e6
+    except OSError:
+        return 0.0
+    return 0.0
+
+
+def _oom_watchdog():
+    while True:
+        rss = _rss_gb()
+        if rss > 2.0:
+            print(f"[oom-watch] RSS={rss:.2f}GB", file=_sys.stderr, flush=True)
+            _fh.dump_traceback(file=_sys.stderr, all_threads=True)
+            _time.sleep(2)
+        else:
+            _time.sleep(1)
+
+
+_th.Thread(target=_oom_watchdog, daemon=True).start()
+# --- end forensics ---
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
