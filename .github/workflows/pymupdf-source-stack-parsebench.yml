@@ -77,6 +77,9 @@ env:
   GCS_PREFIX: parsebench/pymupdf_source_stack
   UV_NO_SYNC: "1"
   WORKFLOW_SCRIPTS: .workflow-support/.github/scripts/pymupdf_source_stack
+  # temporary forensics (run branch only): inject a sitecustomize watchdog
+  # into every python of the job, bypassing the baked container package
+  PYTHONPATH: .workflow-support/.github/scripts/pymupdf_source_stack/inject
 
 jobs:
   benchmark:
