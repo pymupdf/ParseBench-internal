@@ -24,15 +24,53 @@ def _rss_gb():
     return 0.0
 
 
+def _cgroup_gb():
+    for p in ("/sys/fs/cgroup/memory.current",
+              "/sys/fs/cgroup/memory/memory.usage_in_bytes"):
+        try:
+            with open(p, encoding="ascii") as f:
+                return int(f.read().strip()) / 1e9
+        except (OSError, ValueError):
+            continue
+    return 0.0
+
+
+def _top_procs(n=3):
+    import os
+    procs = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/status", encoding="ascii", errors="ignore") as f:
+                rss = 0
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        rss = int(line.split()[1])
+                        break
+            if rss < 50_000:  # skip <50MB
+                continue
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmd = f.read().replace(b"\0", b" ").decode("utf-8", "ignore")[:90]
+            procs.append((rss / 1e6, pid, cmd))
+        except OSError:
+            continue
+    return sorted(procs, reverse=True)[:n]
+
+
 def _oom_watchdog():
+    tick = 0
     while True:
         rss = _rss_gb()
+        cg = _cgroup_gb()
+        tick += 1
+        if tick % 5 == 0 or cg > 4.0 or rss > 2.0:
+            tops = "; ".join(f"{g:.2f}GB pid={p} {c}" for g, p, c in _top_procs())
+            print(f"[oom-watch] self={rss:.2f}GB cgroup={cg:.2f}GB | {tops}",
+                  file=_sys.stderr, flush=True)
         if rss > 2.0:
-            print(f"[oom-watch] RSS={rss:.2f}GB", file=_sys.stderr, flush=True)
             _fh.dump_traceback(file=_sys.stderr, all_threads=True)
-            _time.sleep(2)
-        else:
-            _time.sleep(1)
+        _time.sleep(2)
 
 
 _th.Thread(target=_oom_watchdog, daemon=True).start()
