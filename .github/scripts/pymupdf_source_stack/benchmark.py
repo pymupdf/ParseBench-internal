@@ -59,7 +59,59 @@ def download() -> None:
     marker_path.write_text(json.dumps(expected_marker, indent=2) + "\n", encoding="utf-8")
 
 
+def _mem_monitor() -> None:
+    # Temporary forensics (run branch only): the parent process outlives the
+    # inference subprocess, shares its cgroup, and its stdout reaches the step
+    # log — so log container-wide memory and the biggest processes every 5s.
+    import os
+    import sys
+    import time
+
+    def cgroup_gb() -> float:
+        for path in ("/sys/fs/cgroup/memory.current",
+                     "/sys/fs/cgroup/memory/memory.usage_in_bytes"):
+            try:
+                with open(path, encoding="ascii") as f:
+                    return int(f.read().strip()) / 1e9
+            except (OSError, ValueError):
+                continue
+        return 0.0
+
+    def top_procs(count: int = 3) -> list[tuple[float, str, str]]:
+        procs = []
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                rss = 0
+                with open(f"/proc/{pid}/status", encoding="ascii",
+                          errors="ignore") as f:
+                    for line in f:
+                        if line.startswith("VmRSS:"):
+                            rss = int(line.split()[1])
+                            break
+                if rss < 50_000:
+                    continue
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    cmd = f.read().replace(b"\0", b" ").decode("utf-8",
+                                                               "ignore")[:80]
+                procs.append((rss / 1e6, pid, cmd))
+            except OSError:
+                continue
+        return sorted(procs, reverse=True)[:count]
+
+    while True:
+        tops = "; ".join(f"{gb:.2f}GB pid={pid} {cmd}"
+                         for gb, pid, cmd in top_procs())
+        print(f"[mem-watch] cgroup={cgroup_gb():.2f}GB | {tops}",
+              file=sys.stderr, flush=True)
+        time.sleep(5)
+
+
 def inference() -> None:
+    import threading
+
+    threading.Thread(target=_mem_monitor, daemon=True).start()
     arguments = [
         "inference",
         "run",
